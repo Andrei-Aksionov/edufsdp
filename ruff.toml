@@ -1,0 +1,64 @@
+# https://beta.ruff.rs/docs/rules/
+
+target-version = "py314"
+preview = true  # Enables preview rules like DOC
+
+# TODO: uncomment D, DOC, ERA001 and T201 before making the repo public
+lint.select = [
+  "ANN", # flake8-annotations
+  "ARG001", # Unused function argument
+  # "D", # pydocstule
+  # "DOC", # pydoclint
+  "C4", # flake8-comprehensions
+  "E", # pycodestyle Error
+  # "ERA001", # commented-out-code
+  "F", # PyFlakes
+  "I001", # isort: unsorted-imports
+  "PT", # flake8-pytest-style
+  # "T201", # `print` found
+  "RET", # flake8-return
+  "S", # flake8-bandit
+  "SIM", # flake8-simplify
+  "W", # pycodestyle Warning
+]
+
+lint.ignore = [
+  "ANN202", # Missing return type annotation for private function
+  "ANN204", # Missing return type annotation for special method `__init__`
+  "ANN401", # Dynamically typed expressions (typing.Any) are disallowed in `value`
+  "C408", # Unnecessary {obj_type} call (rewrite as a literal)
+  "D100", # Missing docstring in public module
+  "D101", # Missing docstring in public class
+  "D104", # Missing docstring in public package
+  "D202", # No blank lines allowed after function docstring
+  "D203", # one-blank-line-before-class (conflicts with D211)
+  "D212", # multi-line-summary-first-line (conflicts with D213)
+  "D401", # First line of docstring should be in imperative mood
+  "E402", # Module level import not at top of file
+  "E501", # Line too long ({width} > {limit} characters)
+  "E731", # Do not assign a lambda expression, use a def
+  "PT007", # Wrong values type in @pytest.mark.parametrize expected {values} of {row}
+  "S101", # assert detected
+  "S108", # Probable insecure usage of temporary file or directory: "{}"
+  "S113", # Probable use of requests call without timeout
+  "S310", # Audit URL open for permitted schemes. Allowing use of file: or custom schemes is often unexpected.
+  "S603", # subprocess call: check for execution of untrusted input
+]
+
+line-length = 120
+
+[lint.per-file-ignores]
+"__init__.py" = [
+  "I001", # isort: unsorted-imports
+  "F401", # imported but unused
+]
+"*.ipynb" = [
+  "T201", # `print` found
+]
+"tests/**" = [
+  "ANN", # Type annotations
+  "ARG001", # Unused function argument
+  "D", # Disable all docstring rules for tests
+  "DOC", # Disable all docstring rules for tests
+  "T201", # `print` found
+]

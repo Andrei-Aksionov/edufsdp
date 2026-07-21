@@ -1,0 +1,86 @@
+repos:
+  # default hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+
+  # Ruff
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version.
+    rev: v0.15.17
+    hooks:
+      # Run the linter.
+      - id: ruff-check
+        args: [ --fix ]
+      # Run the formatter.
+      - id: ruff-format
+
+  # Markdown
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.49.0
+    hooks:
+      - id: markdownlint-fix
+        args:
+          - --disable
+          - MD013 # line-length
+          - MD033 # no-inline-html
+
+  # PyRight (check unresolved imports)
+  - repo: local
+    hooks:
+      - id: nbqa-pyright
+        name: nbqa-pyright
+        # 'uv run' ensures the hook sees pyproject.toml dependencies
+        entry: uv run nbqa pyright
+        language: system
+        types: [jupyter]
+
+      - id: cleanup-nbqa-artifacts
+        name: cleanup nbqa artifacts
+        entry: bash -c 'rm -f **/*_pyright_ipynb.py'
+        language: system
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+    # Check hyperlinks and external links
+    - id: lychee-link-checker
+      name: lychee-link-checker
+      language: system
+      entry: |
+        /bin/bash -c '
+        mkdir -p /tmp/lychee 2>/dev/null
+        SENTINEL_DIR="/tmp/lychee/lychee_lock_${PPID}"
+        if ! command -v lychee >/dev/null 2>&1; then
+            # mkdir is atomic; only one process will succeed in creating it
+            if mkdir "$SENTINEL_DIR" 2>/dev/null; then
+                {
+                  echo "--------------------------------------------------------"
+                  echo "Warning: Lychee (link checker) not found. Skipping ... "
+                  echo ""
+                  echo "To enable local link checking, install Lychee:"
+                  echo "  - MacOS: brew install lychee"
+                  echo "  - Linux/Windows: https://github.com/lycheeverse/lychee"
+                  echo "--------------------------------------------------------"
+                } > /dev/tty 2>/dev/null || true
+            fi
+            exit 0
+        fi
+        lychee "$@"
+        ' --
+      args:
+        - "--cache"
+        - "--quiet"
+        - "--no-progress"
+        - "--exclude-path=(^|/)\\.[^/]+/"
+        - "--root-dir=."
+        - "--accept=200,403,429,503"
+        - "--exclude=http://localhost:.*"
+        - "--exclude=http://127.0.0.1:.*"
+        - "--max-retries=5"
+        - "--retry-wait-time=10"
+        - "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+      types_or: [markdown, python, jupyter]
