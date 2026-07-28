@@ -1,10 +1,10 @@
-from typing import Any
+from typing import Any, Callable
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from gloofsdp.collectives import all_gather_parameter
+from gloofsdp.collectives import all_gather_parameter, reduce_scatter_tensor
 from gloofsdp.logging import logger
 
 
@@ -113,3 +113,25 @@ class EducationalFSDP(nn.Module):
             logger.log_parameter_state("AFTER FORWARD (Freed)", name, local_shard_data, full_tensor=None)
 
         return output
+
+    def _make_backward_hook(self, param_name: str) -> Callable[[torch.Tensor], None]:
+        """
+        Creates a backward hook for a full parameter tensor.
+        Executes reduce-scatter on the computed full gradient and assigns the local shard gradient.
+        """
+
+        def hook(full_grad: torch.Tensor) -> None:
+            meta: dict[str, Any] = self._param_metadata[param_name]
+            local_param: nn.Parameter = meta["local_param"]
+
+            logger.log_gradient_state("BEFORE REDUCE-SCATTER", param_name, full_grad=full_grad, local_grad=None)
+
+            # Reduce-scatter full gradient to extract local shard gradient
+            local_grad_data: torch.Tensor = reduce_scatter_tensor(full_grad, meta["shard_size"])
+
+            # Store local gradient directly on the local parameter for SGD optimizer step
+            local_param.grad = local_grad_data
+
+            logger.log_gradient_state("AFTER REDUCE-SCATTER", param_name, full_grad=None, local_grad=local_grad_data)
+
+        return hook

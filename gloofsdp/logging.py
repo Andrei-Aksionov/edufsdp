@@ -31,5 +31,19 @@ class RankLogger:
         )
         self.log(msg)
 
+    def log_gradient_state(
+        self, stage: str, param_name: str, full_grad: torch.Tensor | None, local_grad: torch.Tensor | None
+    ) -> None:
+        full_elements: int = full_grad.numel() if full_grad is not None else 0
+        local_elements: int = local_grad.numel() if local_grad is not None else 0
+
+        msg: str = (
+            f"--- {stage} | Gradient: {param_name} ---\n"
+            f"    -> Full Gradient Elements: {full_elements}\n"
+            f"    -> Local Gradient Shard Elements: {local_elements}\n"
+            f"    -> Status: {'REDUCE_SCATTERED TO LOCAL SHARD' if local_grad is not None else 'FULL GRADIENT COMPUTED'}"
+        )
+        self.log(msg)
+
 
 logger = RankLogger()

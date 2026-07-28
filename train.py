@@ -10,9 +10,9 @@ from model import MLP
 
 
 def init_distributed() -> None:
-    # Fallback default values for local development loops without torchrun script calls
     os.environ["MASTER_ADDR"] = os.environ.get("MASTER_ADDR", "127.0.0.1")
     os.environ["MASTER_PORT"] = os.environ.get("MASTER_PORT", "29500")
+    os.environ["GLOO_SOCKET_IFNAME"] = "lo0"
 
     dist.init_process_group(backend="gloo")
     torch.manual_seed(42 + dist.get_rank())
@@ -24,24 +24,34 @@ def main() -> None:
     logger.log("Spawning standard architecture model...")
     raw_model = MLP()
 
-    # Wrap using our custom simulated execution layer
+    # Wrap model with GlooFSDP
     fsdp_model = EducationalFSDP(raw_model)
 
-    # Local shard optimizer setup
+    # The optimizer ONLY sees local parameter shards!
+    optimizer = torch.optim.SGD(fsdp_model.parameters(), lr=0.1)
     criterion = nn.MSELoss()
 
-    # Synthesize consistent batch samples
     inputs = torch.randn(2, 8)
     targets = torch.randn(2, 4)
 
-    logger.log("Executing Step 1 Forward Pass...")
-    outputs = fsdp_model(inputs)
+    for _ in range(2):
+        # Step 1: Forward
+        logger.log("=== STARTING FORWARD PASS ===")
+        outputs = fsdp_model(inputs)
+        loss = criterion(outputs, targets)
+        logger.log(f"Forward completed. Loss: {loss.item():.4f}")
 
-    # Milestone 1: Compute loss
-    loss = criterion(outputs, targets)
-    logger.log(f"Forward completed successfully. Step Loss Value: {loss.item():.4f}")
+        # Step 2: Backward
+        logger.log("=== STARTING BACKWARD PASS ===")
+        optimizer.zero_grad()
+        loss.backward()
+        logger.log("Backward completed.")
 
-    # Clean termination
+        # Step 3: Optimizer Step
+        logger.log("=== EXECUTING OPTIMIZER STEP ON LOCAL SHARDS ===")
+        optimizer.step()
+        logger.log("Optimizer step completed successfully!")
+
     dist.destroy_process_group()
 
 
