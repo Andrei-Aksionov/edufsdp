@@ -4,6 +4,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 
+from gloofsdp.hooks import ForwardPostHook, ForwardPreHook
 from gloofsdp.logging import logger
 from gloofsdp.sharded_parameter import ShardedParameter
 
@@ -17,6 +18,7 @@ class EducationalFSDP(nn.Module):
 
         self.sharded_params: list[ShardedParameter] = []
         self._shard_parameters()
+        self._register_hooks()
 
     def _shard_parameters(self) -> None:
         logger.log("Initializing parameter sharding across ranks...")
@@ -34,24 +36,21 @@ class EducationalFSDP(nn.Module):
             # Initially place local parameter on module
             sharded_param.free()
 
+    def _register_hooks(self) -> None:
+        """Attaches explicit forward pre/post hooks for each sharded parameter."""
+        for sp in self.sharded_params:
+            # Helper to find target submodule for hook registration
+            target_module = self._get_target_module(sp.name)
+            target_module.register_forward_pre_hook(ForwardPreHook(sp))
+            target_module.register_forward_hook(ForwardPostHook(sp))
+
+    def _get_target_module(self, param_name: str) -> nn.Module:
+        attrs = param_name.split(".")
+        obj = self.module
+        for attr in attrs[:-1]:
+            obj = getattr(obj, attr)
+        return obj
+
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
-        # 1. Log BEFORE gather
-        for sp in self.sharded_params:
-            logger.log_parameter_state("BEFORE FORWARD (Sharded)", sp.name, sp.local_param.data, full_tensor=None)
-
-        # 2. GATHER: Gather full tensors onto module
-        for sp in self.sharded_params:
-            full_param = sp.gather()
-            logger.log_parameter_state(
-                "DURING FORWARD (Gathered)", sp.name, sp.local_param.data, full_tensor=full_param.data
-            )
-
-        # 3. Compute forward pass
-        output = self.module(*args, **kwargs)
-
-        # 4. FREE: Restore local_param on module (Fixes loop iteration updates!)
-        for sp in self.sharded_params:
-            sp.free()
-            logger.log_parameter_state("AFTER FORWARD (Restored Local)", sp.name, sp.local_param.data, full_tensor=None)
-
-        return output
+        # Hooks automatically handle gather before and free after execution!
+        return self.module(*args, **kwargs)

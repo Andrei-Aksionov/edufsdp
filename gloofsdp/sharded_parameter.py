@@ -3,8 +3,8 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from gloofsdp.collectives import all_gather_parameter, reduce_scatter_tensor
-from gloofsdp.logging import logger
+from gloofsdp.collectives import all_gather_parameter
+from gloofsdp.hooks import BackwardHook
 
 
 class ShardedParameter:
@@ -43,7 +43,8 @@ class ShardedParameter:
         self.full_param = nn.Parameter(full_tensor_data, requires_grad=self.local_param.requires_grad)
 
         if self.full_param.requires_grad:
-            self.full_param.register_hook(self._make_backward_hook())
+            # Register explicit BackwardHook instance
+            self.full_param.register_hook(BackwardHook(self))
 
         self._set_on_module(self.full_param)
         return self.full_param
@@ -52,18 +53,6 @@ class ShardedParameter:
         """Re-attaches local_param to the module and discards full_param."""
         self._set_on_module(self.local_param)
         self.full_param = None
-
-    def _make_backward_hook(self):
-        def hook(full_grad: torch.Tensor) -> None:
-            logger.log_gradient_state("BEFORE REDUCE-SCATTER", self.name, full_grad=full_grad, local_grad=None)
-
-            # Reduce-scatter full gradient directly into local_param.grad
-            local_grad_data = reduce_scatter_tensor(full_grad, self.shard_size)
-            self.local_param.grad = local_grad_data
-
-            logger.log_gradient_state("AFTER REDUCE-SCATTER", self.name, full_grad=None, local_grad=local_grad_data)
-
-        return hook
 
     def _set_on_module(self, tensor: nn.Parameter) -> None:
         attrs = self.name.split(".")
