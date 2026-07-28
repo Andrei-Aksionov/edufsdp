@@ -34,7 +34,7 @@ def main() -> None:
     inputs = torch.randn(2, 8)
     targets = torch.randn(2, 4)
 
-    for _ in range(2):
+    for _ in range(3):
         # Step 1: Forward
         logger.log("=== STARTING FORWARD PASS ===")
         outputs = fsdp_model(inputs)

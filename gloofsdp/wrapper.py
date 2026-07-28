@@ -1,32 +1,11 @@
-from typing import Any, Callable
+from typing import Any
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from gloofsdp.collectives import all_gather_parameter, reduce_scatter_tensor
 from gloofsdp.logging import logger
-
-
-def _get_nested_attr(obj: object, attr_path: str) -> None:
-    attrs = attr_path.split(".")
-    for attr in attrs:
-        obj = getattr(obj, attr)
-    return obj
-
-
-def _set_nested_attr(obj: object, attr_path: str, value: object) -> None:
-    attrs = attr_path.split(".")
-    for attr in attrs[:-1]:
-        obj = getattr(obj, attr)
-    setattr(obj, attrs[-1], value)
-
-
-def _del_nested_attr(obj: object, attr_path: str) -> None:
-    attrs = attr_path.split(".")
-    for attr in attrs[:-1]:
-        obj = getattr(obj, attr)
-    delattr(obj, attrs[-1])
+from gloofsdp.sharded_parameter import ShardedParameter
 
 
 class EducationalFSDP(nn.Module):
@@ -36,102 +15,43 @@ class EducationalFSDP(nn.Module):
         self.world_size = dist.get_world_size()
         self.rank = dist.get_rank()
 
-        # Metadata storage for reconstruction
-        self._param_metadata = {}
-
+        self.sharded_params: list[ShardedParameter] = []
         self._shard_parameters()
 
-    def _shard_parameters(self):
-        """
-        Flattens, pads, and shards every parameter within the module.
-        """
+    def _shard_parameters(self) -> None:
         logger.log("Initializing parameter sharding across ranks...")
 
         for name, param in list(self.module.named_parameters()):
-            # Save original metadata
-            orig_shape = param.shape
-            orig_data = param.data
+            sharded_param = ShardedParameter(
+                name=name,
+                module=self.module,
+                param=param,
+                world_size=self.world_size,
+                rank=self.rank,
+            )
+            self.sharded_params.append(sharded_param)
 
-            # Flatten and handle padding if not divisible by world_size
-            flat_param = orig_data.flatten()
-            padding_needed = (self.world_size - (flat_param.numel() % self.world_size)) % self.world_size
-            if padding_needed > 0:
-                flat_param = torch.cat([flat_param, torch.zeros(padding_needed, device=flat_param.device)])
-
-            # Divide into chunks chunks
-            chunks = torch.chunk(flat_param, self.world_size)
-            local_shard_data = chunks[self.rank].clone()
-
-            # Save metadata required for the gather stage
-            self._param_metadata[name] = {
-                "orig_shape": orig_shape,
-                "local_shard": local_shard_data,
-                "padding_needed": padding_needed,
-            }
-
-            # Replace the parameter with our local shard to minimize initial storage footprint
-            # For Milestone 1, we register it as a normal parameter so optimizers can track it.
-            _del_nested_attr(self.module, name)
-            _set_nested_attr(self.module, name, nn.Parameter(local_shard_data, requires_grad=param.requires_grad))
+            # Initially place local parameter on module
+            sharded_param.free()
 
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
-        # 1. Log states BEFORE gather
-        for name, meta in self._param_metadata.items():
-            current_local_tensor = _get_nested_attr(self.module, name)
-            logger.log_parameter_state("BEFORE FORWARD (Sharded)", name, current_local_tensor, full_tensor=None)
+        # 1. Log BEFORE gather
+        for sp in self.sharded_params:
+            logger.log_parameter_state("BEFORE FORWARD (Sharded)", sp.name, sp.local_param.data, full_tensor=None)
 
-        # 2. GATHER: Reconstruct full weights for computational phase
-        gathered_tensors = {}
-        for name, meta in self._param_metadata.items():
-            current_local_tensor = _get_nested_attr(self.module, name)
-
-            # Trigger our explicit collective wrapper
-            full_tensor = all_gather_parameter(current_local_tensor.data, meta["orig_shape"])
-            gathered_tensors[name] = full_tensor
-
-            # Temporarily attach the full tensor to the module for the forward execution pass
-            _del_nested_attr(self.module, name)
-            _set_nested_attr(
-                self.module, name, nn.Parameter(full_tensor, requires_grad=current_local_tensor.requires_grad)
+        # 2. GATHER: Gather full tensors onto module
+        for sp in self.sharded_params:
+            full_param = sp.gather()
+            logger.log_parameter_state(
+                "DURING FORWARD (Gathered)", sp.name, sp.local_param.data, full_tensor=full_param.data
             )
 
-            # Log states DURING computation
-            logger.log_parameter_state("DURING FORWARD (Gathered)", name, current_local_tensor, full_tensor=full_tensor)
-
-        # 3. Compute execution forward pass
+        # 3. Compute forward pass
         output = self.module(*args, **kwargs)
 
-        # 4. FREE: Discard gathered full parameters, reverting tracking back to the local shard
-        for name, meta in self._param_metadata.items():
-            # Extract local shard from our structural tracking metadata store
-            local_shard_data = meta["local_shard"]
-
-            _del_nested_attr(self.module, name)
-            _set_nested_attr(self.module, name, nn.Parameter(local_shard_data, requires_grad=True))
-
-            # Log states AFTER freeing
-            logger.log_parameter_state("AFTER FORWARD (Freed)", name, local_shard_data, full_tensor=None)
+        # 4. FREE: Restore local_param on module (Fixes loop iteration updates!)
+        for sp in self.sharded_params:
+            sp.free()
+            logger.log_parameter_state("AFTER FORWARD (Restored Local)", sp.name, sp.local_param.data, full_tensor=None)
 
         return output
-
-    def _make_backward_hook(self, param_name: str) -> Callable[[torch.Tensor], None]:
-        """
-        Creates a backward hook for a full parameter tensor.
-        Executes reduce-scatter on the computed full gradient and assigns the local shard gradient.
-        """
-
-        def hook(full_grad: torch.Tensor) -> None:
-            meta: dict[str, Any] = self._param_metadata[param_name]
-            local_param: nn.Parameter = meta["local_param"]
-
-            logger.log_gradient_state("BEFORE REDUCE-SCATTER", param_name, full_grad=full_grad, local_grad=None)
-
-            # Reduce-scatter full gradient to extract local shard gradient
-            local_grad_data: torch.Tensor = reduce_scatter_tensor(full_grad, meta["shard_size"])
-
-            # Store local gradient directly on the local parameter for SGD optimizer step
-            local_param.grad = local_grad_data
-
-            logger.log_gradient_state("AFTER REDUCE-SCATTER", param_name, full_grad=None, local_grad=local_grad_data)
-
-        return hook
