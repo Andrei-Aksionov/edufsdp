@@ -2,6 +2,8 @@ import os
 
 import torch
 
+from gloofsdp.visualizer import ASCIIVisualizer
+
 
 class RankLogger:
     def __init__(self):
@@ -44,6 +46,40 @@ class RankLogger:
             f"    -> Status: {'REDUCE_SCATTERED TO LOCAL SHARD' if local_grad is not None else 'FULL GRADIENT COMPUTED'}"
         )
         self.log(msg)
+
+    def log_transition(
+        self,
+        event_name: str,
+        param_name: str,
+        total_elements: int,
+        shard_range: tuple[int, int],
+        before_gathered: bool,
+        after_gathered: bool,
+    ) -> None:
+        before_bar = ASCIIVisualizer.render_shard_bar(
+            total_elements=total_elements,
+            active_range=shard_range,
+            is_gathered=before_gathered,
+        )
+        after_bar = ASCIIVisualizer.render_shard_bar(
+            total_elements=total_elements,
+            active_range=shard_range,
+            is_gathered=after_gathered,
+        )
+
+        msg = (
+            f"\n"
+            f"====================================================\n"
+            f"Rank {self.rank} | {event_name} | {param_name}\n"
+            f"====================================================\n"
+            f"State: {before_bar}\n"
+            f"       ↓\n"
+            f"Op:    {event_name}\n"
+            f"       ↓\n"
+            f"State: {after_bar}\n"
+            f"====================================================\n"
+        )
+        print(msg, flush=True)
 
 
 logger = RankLogger()
