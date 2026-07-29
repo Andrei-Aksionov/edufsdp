@@ -5,6 +5,7 @@ import torch.nn as nn
 
 from gloofsdp.collectives import reduce_scatter_tensor
 from gloofsdp.logging import logger
+from gloofsdp.memory_tracker import memory_tracker
 
 
 class ForwardPreHook:
@@ -85,6 +86,9 @@ class BackwardHook:
         #     local_grad=local_grad_data,
         # )
 
+        # Track full gradient allocation calculated by autograd
+        memory_tracker.track_gradient(full_grad)
+
         # Render transition from Full Gradient to Reduced Local Gradient Shard
         logger.log_transition(
             event_name="reduce_scatter",
@@ -97,3 +101,7 @@ class BackwardHook:
 
         local_grad_data = reduce_scatter_tensor(full_grad, self.sharded_param.shard_size)
         self.sharded_param.local_param.grad = local_grad_data
+
+        # Untrack full gradient and track local gradient shard
+        memory_tracker.untrack_gradient(full_grad)
+        memory_tracker.track_gradient(local_grad_data)

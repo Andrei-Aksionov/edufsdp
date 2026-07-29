@@ -5,6 +5,7 @@ import torch.distributed as dist
 import torch.nn as nn
 
 from gloofsdp.logging import logger
+from gloofsdp.memory_tracker import memory_tracker
 from gloofsdp.wrapper import EducationalFSDP
 from model import MLP
 
@@ -21,36 +22,28 @@ def init_distributed() -> None:
 def main() -> None:
     init_distributed()
 
-    logger.log("Spawning standard architecture model...")
     raw_model = MLP()
-
-    # Wrap model with GlooFSDP
     fsdp_model = EducationalFSDP(raw_model)
 
-    # The optimizer ONLY sees local parameter shards!
     optimizer = torch.optim.SGD(fsdp_model.parameters(), lr=0.1)
     criterion = nn.MSELoss()
 
     inputs = torch.randn(2, 8)
     targets = torch.randn(2, 4)
 
-    for _ in range(1):
-        # Step 1: Forward
-        logger.log("=== STARTING FORWARD PASS ===")
-        outputs = fsdp_model(inputs)
-        loss = criterion(outputs, targets)
-        logger.log(f"Forward completed. Loss: {loss.item():.4f}")
+    logger.log_ordered("=== MEMORY SUMMARY BEFORE FORWARD ===\n" + memory_tracker.get_summary())
 
-        # Step 2: Backward
-        logger.log("=== STARTING BACKWARD PASS ===")
-        optimizer.zero_grad()
-        loss.backward()
-        logger.log("Backward completed.")
+    outputs = fsdp_model(inputs)
+    loss = criterion(outputs, targets)
 
-        # Step 3: Optimizer Step
-        logger.log("=== EXECUTING OPTIMIZER STEP ON LOCAL SHARDS ===")
-        optimizer.step()
-        logger.log("Optimizer step completed successfully!")
+    logger.log_ordered("=== MEMORY SUMMARY AFTER FORWARD ===\n" + memory_tracker.get_summary())
+
+    optimizer.zero_grad()
+    loss.backward()
+
+    logger.log_ordered("=== MEMORY SUMMARY AFTER BACKWARD ===\n" + memory_tracker.get_summary())
+
+    optimizer.step()
 
     dist.destroy_process_group()
 

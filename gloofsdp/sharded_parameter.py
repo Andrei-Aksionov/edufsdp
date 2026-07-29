@@ -5,6 +5,7 @@ import torch.nn as nn
 
 from gloofsdp.collectives import all_gather_parameter
 from gloofsdp.hooks import BackwardHook
+from gloofsdp.memory_tracker import memory_tracker
 
 
 class ShardedParameter:
@@ -32,6 +33,9 @@ class ShardedParameter:
         local_shard_data = chunks[rank].clone()
         self.local_param = nn.Parameter(local_shard_data, requires_grad=param.requires_grad)
 
+        # Track persistent local shard memory allocation
+        memory_tracker.track_sharded_param(self.local_param)
+
         # Temporary full tensor during forward/backward
         self.full_param: Optional[nn.Parameter] = None
 
@@ -42,6 +46,9 @@ class ShardedParameter:
 
         self.full_param = nn.Parameter(full_tensor_data, requires_grad=self.local_param.requires_grad)
 
+        # Track newly materialized gathered parameter
+        memory_tracker.track_gathered_param(self.full_param)
+
         if self.full_param.requires_grad:
             # Register explicit BackwardHook instance
             self.full_param.register_hook(BackwardHook(self))
@@ -51,6 +58,10 @@ class ShardedParameter:
 
     def free(self) -> None:
         """Re-attaches local_param to the module and discards full_param."""
+        if self.full_param is not None:
+            # Untrack full parameter allocation
+            memory_tracker.untrack_gathered_param(self.full_param)
+
         self._set_on_module(self.local_param)
         self.full_param = None
 
