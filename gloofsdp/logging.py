@@ -1,6 +1,7 @@
 import os
 
 import torch
+import torch.distributed as dist
 
 from gloofsdp.visualizer import ASCIIVisualizer
 
@@ -16,6 +17,22 @@ class RankLogger:
 
     def format_log(self, msg: str) -> str:
         return f"[Rank {self.rank}/{self.world_size}] {msg}"
+
+    def log_ordered(self, msg: str) -> None:
+        """
+        Guarantees sequentially ordered stdout across all ranks by passing
+        a token through process barriers.
+        """
+        if not dist.is_initialized():
+            self.log(msg)
+            return
+
+        for rank in range(self.world_size):
+            if self.rank == rank:
+                # Prefix multi-line messages nicely per rank
+                formatted = "\n".join(self.format_log(line) for line in msg.splitlines())
+                print(formatted, flush=True)
+            dist.barrier()  # Synchronize ranks so they wait their turn
 
     def log_parameter_state(
         self, stage: str, param_name: str, local_tensor: torch.Tensor, full_tensor: torch.Tensor | None = None
@@ -79,7 +96,7 @@ class RankLogger:
             f"State: {after_bar}\n"
             f"====================================================\n"
         )
-        print(msg, flush=True)
+        self.log_ordered(msg)
 
 
 logger = RankLogger()
