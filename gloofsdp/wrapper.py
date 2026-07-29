@@ -1,56 +1,66 @@
-from typing import Any
+from typing import Any, Dict
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 
 from gloofsdp.hooks import ForwardPostHook, ForwardPreHook
-from gloofsdp.logging import logger
 from gloofsdp.sharded_parameter import ShardedParameter
+from gloofsdp.state_dict import StateDictHandler, StateDictType
 
 
 class EducationalFSDP(nn.Module):
-    def __init__(self, module: nn.Module):
+    def __init__(self, module: nn.Module) -> None:
         super().__init__()
         self.module = module
         self.world_size = dist.get_world_size()
         self.rank = dist.get_rank()
 
-        self.sharded_params: list[ShardedParameter] = []
-        self._shard_parameters()
-        self._register_hooks()
+        self.sharded_params: Dict[str, ShardedParameter] = {}
+        self._shard_parameters(self.module)
+        self._register_hooks(self.module)
 
-    def _shard_parameters(self) -> None:
-        logger.log("Initializing parameter sharding across ranks...")
-
-        for name, param in list(self.module.named_parameters()):
+    def _shard_parameters(self, module: nn.Module, prefix: str = "") -> None:
+        for name, param in list(module.named_parameters(recurse=False)):
+            full_name = f"{prefix}{name}" if prefix else name
             sharded_param = ShardedParameter(
-                name=name,
-                module=self.module,
+                name=full_name,
+                module=module,
                 param=param,
                 world_size=self.world_size,
                 rank=self.rank,
             )
-            self.sharded_params.append(sharded_param)
+            self.sharded_params[full_name] = sharded_param
 
-            # Initially place local parameter on module
-            sharded_param.free()
+        for child_name, child_module in module.named_children():
+            child_prefix = f"{prefix}{child_name}." if prefix else f"{child_name}."
+            self._shard_parameters(child_module, prefix=child_prefix)
 
-    def _register_hooks(self) -> None:
-        """Attaches explicit forward pre/post hooks for each sharded parameter."""
-        for sp in self.sharded_params:
-            # Helper to find target submodule for hook registration
-            target_module = self._get_target_module(sp.name)
-            target_module.register_forward_pre_hook(ForwardPreHook(sp))
-            target_module.register_forward_hook(ForwardPostHook(sp))
+    def _register_hooks(self, module: nn.Module, prefix: str = "") -> None:
+        for name, child in module.named_children():
+            child_prefix = f"{prefix}{name}." if prefix else f"{name}."
 
-    def _get_target_module(self, param_name: str) -> nn.Module:
-        attrs = param_name.split(".")
-        obj = self.module
-        for attr in attrs[:-1]:
-            obj = getattr(obj, attr)
-        return obj
+            for p_name, param in child.named_parameters(recurse=False):
+                full_param_name = f"{child_prefix}{p_name}"
+                if full_param_name in self.sharded_params:
+                    sharded = self.sharded_params[full_param_name]
+                    child.register_forward_pre_hook(ForwardPreHook(sharded))
+                    child.register_forward_hook(ForwardPostHook(sharded))
 
-    def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
-        # Hooks automatically handle gather before and free after execution!
+            self._register_hooks(child, prefix=child_prefix)
+
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
         return self.module(*args, **kwargs)
+
+    def state_dict(
+        self,
+        state_dict_type: StateDictType = StateDictType.LOCAL,
+    ) -> Dict[str, torch.Tensor]:
+        return StateDictHandler.get_state_dict(self.sharded_params, state_dict_type)
+
+    def load_state_dict(
+        self,
+        state_dict: Dict[str, torch.Tensor],
+        state_dict_type: StateDictType = StateDictType.LOCAL,
+    ) -> None:
+        StateDictHandler.load_state_dict(self.sharded_params, state_dict, state_dict_type)

@@ -6,6 +6,7 @@ import torch.nn as nn
 
 from gloofsdp.logging import logger
 from gloofsdp.memory_tracker import memory_tracker
+from gloofsdp.state_dict import StateDictType
 from gloofsdp.wrapper import EducationalFSDP
 from model import MLP
 
@@ -45,7 +46,28 @@ def main() -> None:
 
     optimizer.step()
 
+    check_sd_loading(fsdp_model)
+
     dist.destroy_process_group()
+
+
+def check_sd_loading(fsdp_model: nn.Module) -> None:
+
+    # 1. Test Local State Dict
+    local_sd = fsdp_model.state_dict(state_dict_type=StateDictType.LOCAL)
+    logger.log_ordered("=== LOCAL STATE DICT ===\n" + "\n".join([f"{k}: shape {v.shape}" for k, v in local_sd.items()]))
+
+    # 2. Test Full State Dict
+    full_sd = fsdp_model.state_dict(state_dict_type=StateDictType.FULL)
+    if dist.get_rank() == 0:
+        logger.log(
+            "=== FULL STATE DICT (Rank 0) ===\n" + "\n".join([f"{k}: shape {v.shape}" for k, v in full_sd.items()])
+        )
+
+    # Verify reloading full state dict onto a fresh model instance
+    fresh_fsdp_model = EducationalFSDP(MLP())
+    fresh_fsdp_model.load_state_dict(full_sd, state_dict_type=StateDictType.FULL)
+    logger.log_ordered("Successfully loaded Full State Dict into fresh model!")
 
 
 if __name__ == "__main__":

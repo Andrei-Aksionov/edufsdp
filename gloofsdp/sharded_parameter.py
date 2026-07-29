@@ -66,12 +66,21 @@ class ShardedParameter:
         self.full_param = None
 
     def _set_on_module(self, tensor: nn.Parameter) -> None:
-        attrs = self.name.split(".")
-        obj = self.module
-        for attr in attrs[:-1]:
-            obj = getattr(obj, attr)
+        # self.module is already the parent leaf module (e.g. Linear object)
+        # self.parameter_name is just "weight" or "bias"
+        attr_name = self.parameter_name
 
-        # Safely remove existing attribute before setting new Parameter
-        if hasattr(obj, attrs[-1]):
-            delattr(obj, attrs[-1])
-        setattr(obj, attrs[-1], tensor)
+        if hasattr(self.module, attr_name):
+            delattr(self.module, attr_name)
+        setattr(self.module, attr_name, tensor)
+
+    # def _set_on_module(self, tensor: nn.Parameter) -> None:
+    #     attrs = self.name.split(".")
+    #     obj = self.module
+    #     for attr in attrs[:-1]:
+    #         obj = getattr(obj, attr)
+
+    #     # Safely remove existing attribute before setting new Parameter
+    #     if hasattr(obj, attrs[-1]):
+    #         delattr(obj, attrs[-1])
+    #     setattr(obj, attrs[-1], tensor)

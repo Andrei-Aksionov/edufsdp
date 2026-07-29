@@ -24,15 +24,17 @@ class RankLogger:
         a token through process barriers.
         """
         if not dist.is_initialized():
-            self.log(msg)
+            if msg.strip():
+                self.log(msg)
             return
 
         for rank in range(self.world_size):
-            if self.rank == rank:
-                # Prefix multi-line messages nicely per rank
+            if self.rank == rank and msg.strip():
                 formatted = "\n".join(self.format_log(line) for line in msg.splitlines())
                 print(formatted, flush=True)
-            dist.barrier()  # Synchronize ranks so they wait their turn
+
+            # ALL ranks hit this barrier on EVERY iteration of the loop
+            dist.barrier()
 
     def log_parameter_state(
         self, stage: str, param_name: str, local_tensor: torch.Tensor, full_tensor: torch.Tensor | None = None
