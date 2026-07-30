@@ -3,33 +3,41 @@ from typing import Any, Dict
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch.distributed.device_mesh import DeviceMesh
 
 from gloofsdp.hooks import ForwardPostHook, ForwardPreHook
-from gloofsdp.sharded_parameter import ShardedParameter
+from gloofsdp.sharded_parameter import DTensorShardedParameter
 from gloofsdp.state_dict import StateDictHandler, StateDictType
 
 
 class EducationalFSDP(nn.Module):
-    def __init__(self, module: nn.Module) -> None:
+    def __init__(self, module: nn.Module, device_mesh: DeviceMesh | None = None) -> None:
         super().__init__()
         self.module = module
         self.world_size = dist.get_world_size()
         self.rank = dist.get_rank()
+        self.device_mesh = device_mesh
 
-        self.sharded_params: Dict[str, ShardedParameter] = {}
+        self.sharded_params: Dict[str, DTensorShardedParameter] = {}
         self._shard_parameters(self.module)
         self._register_hooks(self.module)
 
     def _shard_parameters(self, module: nn.Module, prefix: str = "") -> None:
         for name, param in list(module.named_parameters(recurse=False)):
             full_name = f"{prefix}{name}" if prefix else name
-            sharded_param = ShardedParameter(
+            sharded_param = DTensorShardedParameter(
                 name=full_name,
                 module=module,
                 param=param,
-                world_size=self.world_size,
-                rank=self.rank,
+                device_mesh=self.device_mesh,
             )
+            # sharded_param = ShardedParameter(
+            #     name=full_name,
+            #     module=module,
+            #     param=param,
+            #     world_size=self.world_size,
+            #     rank=self.rank,
+            # )
             self.sharded_params[full_name] = sharded_param
 
         for child_name, child_module in module.named_children():

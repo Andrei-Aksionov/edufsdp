@@ -3,6 +3,7 @@ import os
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch.distributed.device_mesh import DeviceMesh, init_device_mesh
 
 from gloofsdp.logging import logger
 from gloofsdp.memory_tracker import memory_tracker
@@ -22,9 +23,10 @@ def init_distributed() -> None:
 
 def main() -> None:
     init_distributed()
+    mesh = init_device_mesh("cpu", mesh_shape=(dist.get_world_size(),))
 
     raw_model = MLP()
-    fsdp_model = EducationalFSDP(raw_model)
+    fsdp_model = EducationalFSDP(raw_model, device_mesh=mesh)
 
     optimizer = torch.optim.SGD(fsdp_model.parameters(), lr=0.1)
     criterion = nn.MSELoss()
@@ -46,12 +48,12 @@ def main() -> None:
 
     optimizer.step()
 
-    check_sd_loading(fsdp_model)
+    check_sd_loading(fsdp_model, mesh)
 
     dist.destroy_process_group()
 
 
-def check_sd_loading(fsdp_model: nn.Module) -> None:
+def check_sd_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) -> None:
 
     # 1. Test Local State Dict
     local_sd = fsdp_model.state_dict(state_dict_type=StateDictType.LOCAL)
@@ -65,7 +67,7 @@ def check_sd_loading(fsdp_model: nn.Module) -> None:
         )
 
     # Verify reloading full state dict onto a fresh model instance
-    fresh_fsdp_model = EducationalFSDP(MLP())
+    fresh_fsdp_model = EducationalFSDP(MLP(), device_mesh=device_mesh)
     fresh_fsdp_model.load_state_dict(full_sd, state_dict_type=StateDictType.FULL)
     logger.log_ordered("Successfully loaded Full State Dict into fresh model!")
 
