@@ -102,24 +102,43 @@ class DTensorShardedParameter:
         self.device_mesh = device_mesh
         self.global_shape = param.shape
 
-        # Convert the full global parameter into a DTensor sharded along dim 0
-        # This replaces our manual padding and chunking logic!
+        # 1. Create local parameter shard directly (this is what the optimizer will update)
         with torch.no_grad():
-            self.dtensor: DTensor = distribute_tensor(
-                param.data, device_mesh=self.device_mesh, placements=[Shard(dim=0)]
-            )
+            temp_dtensor = distribute_tensor(param.data, device_mesh=self.device_mesh, placements=[Shard(dim=0)])
+            # Make sure local_param is a leaf nn.Parameter!
+            self.local_param = nn.Parameter(temp_dtensor.to_local().clone())
 
-        self.shard_size = self.dtensor.numel() // self.device_mesh.size()
+        # Set the local shard on the module initially
+        self.free()
+
+        # self.shard_size = self.dtensor.numel() // self.device_mesh.size()
+        self.shard_size = self.local_param.numel() // self.device_mesh.size()
         start_idx = self.device_mesh.get_rank() * self.shard_size
         end_idx = start_idx + self.shard_size
         self.shard_range = (start_idx, end_idx)
 
-        self.local_param = self.dtensor.to_local()
-
         # Replace the module parameter with the local tensor shard
-        self._set_on_module(nn.Parameter(self.dtensor.to_local()))
+        # self._set_on_module(nn.Parameter(self.dtensor.to_local()))
+        # self._set_on_module(self.local_param)
 
     def gather(self) -> torch.Tensor:
+        """
+        Reconstructs DTensor from current local_param, redistributes to Replicated,
+        and sets the gathered parameter on the module.
+        """
+        # 1. Wrap the CURRENT (potentially optimizer-updated) local_param as a Sharded DTensor
+        sharded_dtensor = DTensor.from_local(self.local_param, device_mesh=self.device_mesh, placements=[Shard(dim=0)])
+
+        # 2. Gather / Redistribute across mesh -> Replicate()
+        replicated_dtensor = sharded_dtensor.redistribute(device_mesh=self.device_mesh, placements=[Replicate()])
+
+        # 3. Unwrap local tensor and attach to module as a Parameter requiring grad
+        full_tensor = replicated_dtensor.to_local().detach().requires_grad_(True)
+        self._set_on_module(full_tensor)
+
+        return full_tensor
+
+    def gather1(self) -> torch.Tensor:
         """
         Redistributes the sharded DTensor to a Replicated state (All-Gather).
         """
@@ -135,7 +154,8 @@ class DTensorShardedParameter:
         """
         Reverts module attribute back to the local shard to free full-size memory.
         """
-        self._set_on_module(nn.Parameter(self.dtensor.to_local()))
+        # self._set_on_module(nn.Parameter(self.dtensor.to_local()))
+        self._set_on_module(self.local_param)
 
     def _set_on_module(self, tensor: nn.Parameter) -> None:
         if hasattr(self.module, self.parameter_name):

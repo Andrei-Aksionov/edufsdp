@@ -45,6 +45,11 @@ def main() -> None:
         optimizer.zero_grad()
         loss.backward()
 
+        # for name, sp in fsdp_model.sharded_params.items():
+        #     print(f"[Rank {dist.get_rank()}] {name} grad is None? {sp.local_param.grad is None}")
+        #     if sp.local_param.grad is not None:
+        #         print(f"[Rank {dist.get_rank()}] {name} grad norm: {sp.local_param.grad.norm().item()}")
+
         # logger.log_ordered("=== MEMORY SUMMARY AFTER BACKWARD ===\n" + memory_tracker.get_summary())
 
         optimizer.step()

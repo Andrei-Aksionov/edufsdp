@@ -25,6 +25,7 @@ class EducationalFSDP(nn.Module):
     def _shard_parameters(self, module: nn.Module, prefix: str = "") -> None:
         for name, param in list(module.named_parameters(recurse=False)):
             full_name = f"{prefix}{name}" if prefix else name
+
             sharded_param = DTensorShardedParameter(
                 name=full_name,
                 module=module,
@@ -40,22 +41,32 @@ class EducationalFSDP(nn.Module):
             # )
             self.sharded_params[full_name] = sharded_param
 
+            # Explicitly place the local un-padded shard onto the module right away
+            sharded_param.free()
+
         for child_name, child_module in module.named_children():
             child_prefix = f"{prefix}{child_name}." if prefix else f"{child_name}."
             self._shard_parameters(child_module, prefix=child_prefix)
 
     def _register_hooks(self, module: nn.Module, prefix: str = "") -> None:
-        for name, child in module.named_children():
-            child_prefix = f"{prefix}{name}." if prefix else f"{name}."
+        # Register hooks ONCE per submodule, passing all parameters belonging to that submodule
+        for child_name, child_module in module.named_children():
+            child_prefix = f"{prefix}{child_name}." if prefix else f"{child_name}."
 
-            for p_name, param in child.named_parameters(recurse=False):
-                full_param_name = f"{child_prefix}{p_name}"
-                if full_param_name in self.sharded_params:
-                    sharded = self.sharded_params[full_param_name]
-                    child.register_forward_pre_hook(ForwardPreHook(sharded))
-                    child.register_forward_hook(ForwardPostHook(sharded))
+            # Find all sharded parameters for this child module
+            child_params = [
+                self.sharded_params[f"{child_prefix}{p_name}"]
+                for p_name, _ in child_module.named_parameters(recurse=False)
+                if f"{child_prefix}{p_name}" in self.sharded_params
+            ]
 
-            self._register_hooks(child, prefix=child_prefix)
+            # Register one pre-hook and post-hook per parameter on the child module
+            for sharded in child_params:
+                child_module.register_forward_pre_hook(ForwardPreHook(sharded))
+                child_module.register_forward_hook(ForwardPostHook(sharded))
+
+            # Recurse down to deeper submodules
+            self._register_hooks(child_module, prefix=child_prefix)
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         return self.module(*args, **kwargs)

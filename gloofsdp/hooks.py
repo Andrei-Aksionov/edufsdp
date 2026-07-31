@@ -1,17 +1,32 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.nn as nn
 from torch import distributed as dist
-from torch.distributed.tensor import DTensor, Replicate, Shard
+from torch.distributed.tensor import DTensor, Partial, Replicate, Shard
 
 from gloofsdp.collectives import reduce_scatter_tensor
 from gloofsdp.logging import logger
 from gloofsdp.memory_tracker import memory_tracker
-from gloofsdp.sharded_parameter import DTensorShardedParameter, ShardedParameter
+
+if TYPE_CHECKING:
+    from gloofsdp.sharded_parameter import DTensorShardedParameter, ShardedParameter
 
 
 class ForwardPreHook:
+    def __init__(self, dtensor_param: DTensorShardedParameter):
+        self.dtensor_param = dtensor_param
+
+    def __call__(self, module: nn.Module, inputs: Any) -> None:
+        # 1. Gather full tensor
+        full_tensor = self.dtensor_param.gather()
+
+        # 2. CRITICAL: Register backward hook on the gathered tensor!
+        if full_tensor.requires_grad:
+            full_tensor.register_hook(DTensorBackwardHook(self.dtensor_param))
+
+
+class ForwardPreHook1:
     """Pre-forward hook that gathers sharded parameters before computational pass."""
 
     def __init__(self, sharded_param: Any):
@@ -65,7 +80,25 @@ class ForwardPostHook:
         self.sharded_param.free()
 
 
+# It's for ShardedParameter
 class BackwardHook:
+    def __init__(self, dtensor_param: DTensorShardedParameter):
+        self.dtensor_param = dtensor_param
+
+    def __call__(self, grad: torch.Tensor) -> None:
+        # 1. Wrap incoming full gradient as Replicated DTensor
+        grad_dtensor = DTensor.from_local(grad, device_mesh=self.dtensor_param.device_mesh, placements=[Replicate()])
+
+        # 2. Reduce-Scatter to Shard(0)
+        sharded_grad = grad_dtensor.redistribute(
+            device_mesh=self.dtensor_param.device_mesh, placements=[Shard(dim=0)]
+        ).to_local()
+
+        # 3. Attach reduced shard gradient directly to local_param
+        self.dtensor_param.local_param.grad = sharded_grad
+
+
+class BackwardHook11:
     """Tensor backward hook that performs reduce-scatter on full gradients."""
 
     def __init__(self, sharded_param: Any):
@@ -138,7 +171,7 @@ class BackwardHook1:
         return None
 
 
-class DTensorBackwardHook:
+class DTensorBackwardHook11:
     def __init__(self, dtensor_param: DTensorShardedParameter):
         self.dtensor_param = dtensor_param
 
@@ -156,3 +189,51 @@ class DTensorBackwardHook:
         self.dtensor_param.local_param.grad = sharded_grad_dtensor.to_local()
 
         return None
+
+
+class DTensorBackwardHook1:
+    def __init__(self, dtensor_param: DTensorShardedParameter):
+        self.dtensor_param = dtensor_param
+
+    def __call__(self, grad: torch.Tensor) -> None:
+        grad_dtensor = DTensor.from_local(grad, device_mesh=self.dtensor_param.device_mesh, placements=[Replicate()])
+
+        sharded_grad = grad_dtensor.redistribute(
+            device_mesh=self.dtensor_param.device_mesh, placements=[Shard(dim=0)]
+        ).to_local()
+
+        # CRITICAL: Divide by world_size to convert SUM -> AVERAGE
+        world_size = self.dtensor_param.device_mesh.size()
+        sharded_grad.div_(world_size)
+
+        self.dtensor_param.local_param.grad = sharded_grad
+        return
+
+
+class DTensorBackwardHook:
+    def __init__(self, dtensor_param: DTensorShardedParameter):
+        self.dtensor_param = dtensor_param
+
+    def __call__(self, grad: torch.Tensor) -> None:
+        # 1. Mark incoming gradient as Partial() because it needs reduction across ranks!
+        grad_dtensor = DTensor.from_local(
+            grad,
+            device_mesh=self.dtensor_param.device_mesh,
+            placements=[Partial()],  # <--- CRITICAL FIX!
+        )
+        # Changing [Replicate()] to [Partial()] in DTensor.from_local() will force DTensor to communicate gradients
+        # across processes during backward, bringing Rank 0 and Rank 1 back into alignment
+
+        # 2. Redistributing Partial() -> Shard(0) triggers a true REDUCE_SCATTER collective!
+        sharded_grad_dtensor = grad_dtensor.redistribute(
+            device_mesh=self.dtensor_param.device_mesh, placements=[Shard(dim=0)]
+        )
+
+        sharded_grad = sharded_grad_dtensor.to_local()
+
+        # 3. Average the reduced sum across the mesh size
+        world_size = self.dtensor_param.device_mesh.size()
+        sharded_grad.div_(world_size)
+
+        self.dtensor_param.local_param.grad = sharded_grad
+        return

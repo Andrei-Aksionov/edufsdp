@@ -44,13 +44,13 @@ class RankLogger:
 
         status = f"Status: {'GATHERED' if full_tensor is not None else 'SHARDED'}"
 
-        msg = (
+        msg = (  # ruff: ignore[unused-variable]
             f"--- {stage} | Parameter: {param_name} ---\n"
             f"    -> Local Shard Shape: {list(local_tensor.shape)} ({local_elements} elements)\n"
             f"    -> Active Tensor Shape: {list(full_tensor.shape if full_tensor is not None else local_tensor.shape)}\n"
             f"    -> {status} (Total simulated global elements: {full_elements if full_elements else local_elements * self.world_size})"
         )
-        self.log(msg)
+        # self.log(msg)
 
     def log_gradient_state(
         self, stage: str, param_name: str, full_grad: torch.Tensor | None, local_grad: torch.Tensor | None
@@ -58,13 +58,13 @@ class RankLogger:
         full_elements: int = full_grad.numel() if full_grad is not None else 0
         local_elements: int = local_grad.numel() if local_grad is not None else 0
 
-        msg: str = (
+        msg: str = (  # ruff: ignore[unused-variable]
             f"--- {stage} | Gradient: {param_name} ---\n"
             f"    -> Full Gradient Elements: {full_elements}\n"
             f"    -> Local Gradient Shard Elements: {local_elements}\n"
             f"    -> Status: {'REDUCE_SCATTERED TO LOCAL SHARD' if local_grad is not None else 'FULL GRADIENT COMPUTED'}"
         )
-        self.log(msg)
+        # self.log(msg)
 
     def log_transition(
         self,
@@ -86,7 +86,7 @@ class RankLogger:
             is_gathered=after_gathered,
         )
 
-        msg = (
+        msg = (  # ruff: ignore[unused-variable]
             f"\n"
             f"====================================================\n"
             f"Rank {self.rank} | {event_name} | {param_name}\n"
@@ -98,7 +98,7 @@ class RankLogger:
             f"State: {after_bar}\n"
             f"====================================================\n"
         )
-        self.log_ordered(msg)
+        # self.log_ordered(msg)
 
 
 logger = RankLogger()
