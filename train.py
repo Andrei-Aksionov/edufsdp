@@ -1,4 +1,5 @@
 import os
+import platform
 
 import torch
 import torch.distributed as dist
@@ -6,15 +7,20 @@ import torch.nn as nn
 from torch.distributed.device_mesh import DeviceMesh, init_device_mesh
 
 from gloofsdp.logging import logger
+from gloofsdp.model import MLP
 from gloofsdp.state_dict import StateDictType
 from gloofsdp.wrapper import EducationalFSDP
-from model import MLP
 
 
 def init_distributed() -> None:
     os.environ["MASTER_ADDR"] = os.environ.get("MASTER_ADDR", "127.0.0.1")
     os.environ["MASTER_PORT"] = os.environ.get("MASTER_PORT", "29500")
-    os.environ["GLOO_SOCKET_IFNAME"] = "lo0"
+
+    current_os = platform.system()
+    if current_os == "Darwin":  # macOS
+        os.environ["GLOO_SOCKET_IFNAME"] = "lo0"
+    elif current_os == "Linux":  # Linux / Lightning AI Studio
+        os.environ["GLOO_SOCKET_IFNAME"] = "lo"
 
     dist.init_process_group(backend="gloo")
     torch.manual_seed(42 + dist.get_rank())
