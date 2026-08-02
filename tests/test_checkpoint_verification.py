@@ -1,5 +1,6 @@
 import copy
 
+import pytest
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -33,6 +34,7 @@ def init_distributed():
     return rank, world_size
 
 
+@pytest.mark.torchrun(nproc=2)
 def test_state_dict_compatibility():
     rank, world_size = init_distributed()
     device = torch.device("cpu")
@@ -128,7 +130,3 @@ def test_state_dict_compatibility():
         print("\n🎉 ALL CHECKPOINT & STATE_DICT COMPATIBILITY TESTS PASSED!")
 
     dist.destroy_process_group()
-
-
-if __name__ == "__main__":
-    test_state_dict_compatibility()

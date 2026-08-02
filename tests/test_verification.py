@@ -1,5 +1,6 @@
 import copy
 
+import pytest
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -30,7 +31,8 @@ def init_distributed():
     return rank, world_size
 
 
-def run_verification_suite():
+@pytest.mark.torchrun(nproc=2)
+def test_run_verification_suite():
     rank, world_size = init_distributed()
     device = torch.device("cpu")
     mesh = init_device_mesh("cpu", mesh_shape=(dist.get_world_size(),))
@@ -93,7 +95,3 @@ def run_verification_suite():
 
     print(f"✅ [Rank {rank}] ALL VERIFICATION TESTS PASSED SUCCESSFULLY!")
     dist.destroy_process_group()
-
-
-if __name__ == "__main__":
-    run_verification_suite()
