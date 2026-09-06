@@ -10,20 +10,31 @@ from torch.distributed.fsdp import FullyShardedDataParallel as NativeFSDP
 from gloofsdp.wrapper import EducationalFSDP
 
 
-class ToyModel(nn.Module):
-    """A multi-layer model with Linear layers and GELU activations."""
-
-    def __init__(self):
+class MLP(nn.Module):
+    def __init__(self, input_dim: int = 8, hidden_dim: int = 16, output_dim: int = 4):
         super().__init__()
-        self.fc1 = nn.Linear(16, 32, bias=True)
-        self.act = nn.GELU()
-        self.fc2 = nn.Linear(32, 8, bias=True)
+        self.layer1 = nn.Linear(input_dim, hidden_dim)
+        self.relu = nn.ReLU()
+        self.layer2 = nn.Linear(hidden_dim, output_dim)
 
-    def forward(self, x):
-        return self.fc2(self.act(self.fc1(x)))
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.layer1(x)
+        x = self.relu(x)
+        return self.layer2(x)
 
 
 def init_distributed():
+    # TODO (andrei aksionau): dist.init_process_group can receive timeout value,
+    # for example:
+    # from datetime import timedelta
+    # import torch.distributed as dist
+
+    # def init_distributed(timeout_seconds=10):
+    #     dist.init_process_group(
+    #         backend="gloo",
+    #         timeout=timedelta(seconds=timeout_seconds) # Raises RuntimeError on hanging collective
+    #     )
+
     dist.init_process_group(backend="gloo")
     rank = dist.get_rank()
     world_size = dist.get_world_size()
@@ -38,7 +49,7 @@ def test_run_verification_suite():
     mesh = init_device_mesh("cpu", mesh_shape=(dist.get_world_size(),))
 
     # 1. Instantiate reference model on Rank 0 and broadcast to ensure 100% weight alignment
-    base_model = ToyModel().to(device)
+    base_model = MLP().to(device)
     for param in base_model.parameters():
         dist.broadcast(param.data, src=0)
 
@@ -58,8 +69,8 @@ def test_run_verification_suite():
     # 3. Create Deterministic Per-Rank Input Data & Target Data
     # Fixed seed for inputs so run-to-run comparisons are identical
     torch.manual_seed(100 + rank)
-    x = torch.randn(4, 16, device=device)
-    target = torch.randn(4, 8, device=device)
+    x = torch.randn(2, 8, device=device)
+    target = torch.randn(2, 4, device=device)
     criterion = nn.MSELoss()
 
     print(f"[Rank {rank}] Running 5-step convergence comparison...")
@@ -94,4 +105,57 @@ def test_run_verification_suite():
         assert loss_diff < 1e-5, f"Loss value diverged at step {step}!"
 
     print(f"✅ [Rank {rank}] ALL VERIFICATION TESTS PASSED SUCCESSFULLY!")
+    dist.destroy_process_group()
+
+
+@pytest.mark.torchrun(nproc=2)
+def test_run_verification_loss_decreases():
+    rank, world_size = init_distributed()
+    device = torch.device("cpu")
+    mesh = init_device_mesh("cpu", mesh_shape=(dist.get_world_size(),))
+
+    # 1. Instantiate reference model on Rank 0 and broadcast to ensure 100% weight alignment
+    # base_model = ToyModel().to(device)
+    base_model = MLP().to(device)
+
+    fsdp_model = EducationalFSDP(base_model, device_mesh=mesh)
+    fsdp_optimizer = torch.optim.SGD(fsdp_model.parameters(), lr=0.01)
+    criterion = nn.MSELoss()
+
+    # 3. Create Deterministic Per-Rank Input Data & Target Data
+    x = torch.randn(2, 8, device=device)
+    target = torch.randn(2, 4, device=device)
+
+    print(f"[Rank {rank}] Running 5-step convergence comparison...")
+
+    local_losses = []
+
+    # 4. Training Step Verification Loop
+    for step in range(1, 6):
+        # --- Educational FSDP Step ---
+        fsdp_optimizer.zero_grad()
+        fsdp_out = fsdp_model(x)
+        fsdp_loss = criterion(fsdp_out, target)
+        fsdp_loss.backward()
+        fsdp_optimizer.step()
+
+        local_losses.append(fsdp_loss.item())
+
+    # 1. Gather all loss lists across ranks
+    gathered_losses = [None for _ in range(world_size)]
+    dist.all_gather_object(gathered_losses, local_losses)
+
+    # 2. Rank 0 runs assertions on all collected loss histories
+    if rank == 0:
+        rank_loss_dict = dict(enumerate(gathered_losses))
+
+        for r, raw_losses in rank_loss_dict.items():
+            initial_loss = raw_losses[0]
+            final_loss = raw_losses[-1]
+
+            assert final_loss < initial_loss, (
+                f"Rank {r} loss failed to decrease. Start loss: {initial_loss:.4f}, End loss: {final_loss:.4f}"
+            )
+
+    print(f"✅ [Rank {rank}] Loss decreases successfully!")
     dist.destroy_process_group()
