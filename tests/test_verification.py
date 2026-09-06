@@ -1,4 +1,5 @@
 import copy
+from datetime import timedelta
 
 import pytest
 import torch
@@ -35,7 +36,10 @@ def init_distributed():
     #         timeout=timedelta(seconds=timeout_seconds) # Raises RuntimeError on hanging collective
     #     )
 
-    dist.init_process_group(backend="gloo")
+    dist.init_process_group(
+        backend="gloo",
+        timeout=timedelta(seconds=28),  # Raises RuntimeError on hanging collective
+    )
     rank = dist.get_rank()
     world_size = dist.get_world_size()
     torch.manual_seed(42 + rank)

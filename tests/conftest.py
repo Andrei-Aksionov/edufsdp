@@ -5,6 +5,16 @@ import sys
 
 import pytest
 
+# @pytest.fixture
+# def init_gloo():
+#     """Initializes Gloo process group for worker processes and handles cleanup."""
+#     if os.environ.get("IN_TORCHRUN_WORKER") == "1" and not dist.is_initialized():
+#         dist.init_process_group(backend="gloo")
+#         yield
+#         dist.destroy_process_group()
+#     else:
+#         yield
+
 
 def get_free_port() -> int:
     """Finds and returns an available port allocated by the OS kernel."""
@@ -15,25 +25,31 @@ def get_free_port() -> int:
 
 def pytest_configure(config):
     config.addinivalue_line(
-        "markers", "torchrun(nproc=2, timeout=30): marks test to be executed via torch.distributed.run"
+        "markers",
+        "torchrun(nproc=2, timeout=30): marks test to be executed via torch.distributed.run",
     )
+
+    # PATH B: Inside torchrun Worker - Mute stdout on rank > 0
+    if os.environ.get("IN_TORCHRUN_WORKER") == "1":
+        rank = int(os.environ.get("RANK", "0"))
+        if rank != 0:
+            # Direct non-zero rank prints to devnull so only Rank 0 logs to terminal
+            sys.stdout = open(os.devnull, "w")  # ruff: ignore[open-file-with-context-handler]
 
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_protocol(item, nextitem):
+    """Intercepts test execution in Parent process BEFORE fixtures run."""
     marker = item.get_closest_marker("torchrun")
 
     if not marker:
         return None
 
-    # PATH A: Parent Pytest Process (Not inside torchrun yet)
+    # PATH A: Parent Pytest Process (Orchestrates torchrun)
     if os.environ.get("IN_TORCHRUN_WORKER") != "1":
         nproc = marker.kwargs.get("nproc", 2)
         timeout = marker.kwargs.get("timeout", 30)
-
-        # Allow explicit port override from marker; otherwise dynamically assign a free port
         port = marker.kwargs.get("port") or get_free_port()
-
         test_node = item.nodeid
 
         cmd = [
@@ -47,15 +63,17 @@ def pytest_runtest_protocol(item, nextitem):
             "-m",
             "pytest",
             test_node,
-            "-s",
+            # "--no-header",  # Strip duplicate header banner from worker session
             "-o",
             "addopts=",
         ]
 
         env = os.environ.copy()
         env["IN_TORCHRUN_WORKER"] = "1"
+        env["TORCH_CPP_LOG_LEVEL"] = "ERROR"
 
         try:
+            # Unbuffered live stream directly to standard terminal streams
             result = subprocess.run(cmd, env=env, timeout=timeout)
 
             if result.returncode != 0:
