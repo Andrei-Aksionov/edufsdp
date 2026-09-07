@@ -23,6 +23,8 @@ class EducationalFSDP(nn.Module):
         self._register_hooks(self.module)
 
     def _shard_parameters(self, module: nn.Module, prefix: str = "") -> None:
+        # TODO (andrei aksionau): don't understand why to iterate over named_parameters
+        # and later over named_children and not the opposite, like it was done in _register_hooks
         for name, param in list(module.named_parameters(recurse=False)):
             full_name = f"{prefix}{name}" if prefix else name
 
@@ -32,20 +34,17 @@ class EducationalFSDP(nn.Module):
                 param=param,
                 device_mesh=self.device_mesh,
             )
-            # sharded_param = ShardedParameter(
-            #     name=full_name,
-            #     module=module,
-            #     param=param,
-            #     world_size=self.world_size,
-            #     rank=self.rank,
-            # )
+
             self.sharded_params[full_name] = sharded_param
 
             # Explicitly place the local un-padded shard onto the module right away
             sharded_param.free()
 
+        # TODO (andrei aksionau): this I don't understand. We first iterate over named_parameters
+        # and later here over named_children and moreover later do a recursion.
         for child_name, child_module in module.named_children():
             child_prefix = f"{prefix}{child_name}." if prefix else f"{child_name}."
+            # TODO (andrei aksionau): how necessary it is to have this recursion
             self._shard_parameters(child_module, prefix=child_prefix)
 
     def _register_hooks(self, module: nn.Module, prefix: str = "") -> None:
@@ -61,9 +60,12 @@ class EducationalFSDP(nn.Module):
             ]
 
             # Register one pre-hook and post-hook per parameter on the child module
+            # TODO (andrei aksionau): Why don't we register here the backward hook too?
             for sharded in child_params:
                 child_module.register_forward_pre_hook(ForwardPreHook(sharded))
                 child_module.register_forward_hook(ForwardPostHook(sharded))
+                # if sharded.requires_grad:
+                #     register backward hook
 
             # Recurse down to deeper submodules
             self._register_hooks(child_module, prefix=child_prefix)

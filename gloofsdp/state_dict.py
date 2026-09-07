@@ -5,6 +5,7 @@ import torch
 import torch.distributed as dist
 
 # Native DTensor imports (used if available)
+# TODO (andrei aksionau): seems like it's not needed
 try:
     from torch.distributed.tensor import Shard, distribute_tensor
 

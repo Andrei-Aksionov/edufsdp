@@ -79,7 +79,7 @@ class TestFSDPLossDecrease:
         dist.all_gather_object(gathered_losses, local_losses)
 
         if rank == 0:
-            rank_loss_dict = {str(r): losses for r, losses in enumerate(gathered_losses)}
+            rank_loss_dict = dict(enumerate(gathered_losses))
             with open(result_path, "w") as f:
                 json.dump(rank_loss_dict, f)
 
