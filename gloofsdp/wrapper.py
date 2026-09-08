@@ -1,3 +1,10 @@
+"""
+Educational FSDP Wrapper module.
+
+Transforms target `nn.Module` by sharding parameters across ranks and attaching
+pre/post execution hooks to handle automatic parameter gathering and freeing.
+"""
+
 from typing import Any, Dict
 
 import torch
@@ -5,12 +12,16 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch.distributed.device_mesh import DeviceMesh
 
-from gloofsdp.hooks import ForwardPostHook, ForwardPreHook
+from gloofsdp.hooks import BackwardPreHook, ForwardPostHook, ForwardPreHook
 from gloofsdp.sharded_parameter import DTensorShardedParameter
 from gloofsdp.state_dict import StateDictHandler, StateDictType
 
 
 class EducationalFSDP(nn.Module):
+    """
+    Educational Fully Sharded Data Parallel wrapper.
+    """
+
     def __init__(self, module: nn.Module, device_mesh: DeviceMesh | None = None) -> None:
         super().__init__()
         self.module = module
@@ -19,7 +30,11 @@ class EducationalFSDP(nn.Module):
         self.device_mesh = device_mesh
 
         self.sharded_params: Dict[str, DTensorShardedParameter] = {}
+
+        # 1. Transform parameters into DTensorShardedParameters
         self._shard_parameters(self.module)
+
+        # 2. Attach module execution hooks for pre/post forward lifecycle
         self._register_hooks(self.module)
 
     def _shard_parameters(self, module: nn.Module, prefix: str = "") -> None:
@@ -74,11 +89,13 @@ class EducationalFSDP(nn.Module):
             for sharded in child_params:
                 child_module.register_forward_pre_hook(ForwardPreHook(sharded))
                 child_module.register_forward_hook(ForwardPostHook(sharded))
+                child_module.register_full_backward_pre_hook(BackwardPreHook(sharded))
 
             # 4. Recurse down to register hooks on submodules within `child_module`.
             self._register_hooks(child_module, prefix=child_prefix)
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
+        """Delegates forward pass execution to wrapped inner module."""
         return self.module(*args, **kwargs)
 
     def state_dict(
