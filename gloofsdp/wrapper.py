@@ -23,11 +23,18 @@ class EducationalFSDP(nn.Module):
         self._register_hooks(self.module)
 
     def _shard_parameters(self, module: nn.Module, prefix: str = "") -> None:
-        # TODO (andrei aksionau): don't understand why to iterate over named_parameters
-        # and later over named_children and not the opposite, like it was done in _register_hooks
+        """
+        Traverses the module tree to replace unsharded torch.nn.Parameters with DTensorShardedParameters.
+
+        Order: Processes direct parameters first, then recurses into child submodules.
+        Target: Operates on individual torch.nn.Parameters.
+        """
+        # 1. Outer Loop: Process parameters directly attached to this `module` instance.
+        # We use recurse=False to prevent grabbing parameters belonging to submodules (e.g. child Linear layers).
         for name, param in list(module.named_parameters(recurse=False)):
             full_name = f"{prefix}{name}" if prefix else name
 
+            # Convert standard parameter into a sharded parameter (splits tensor across ranks)
             sharded_param = DTensorShardedParameter(
                 name=full_name,
                 module=module,
@@ -35,39 +42,40 @@ class EducationalFSDP(nn.Module):
                 device_mesh=self.device_mesh,
             )
 
+            # Track in FSDP state
             self.sharded_params[full_name] = sharded_param
 
-            # Explicitly place the local un-padded shard onto the module right away
-            sharded_param.free()
-
-        # TODO (andrei aksionau): this I don't understand. We first iterate over named_parameters
-        # and later here over named_children and moreover later do a recursion.
+        # 2. Inner / Sequential Loop: Recurse into child submodules to shard their parameters.
         for child_name, child_module in module.named_children():
             child_prefix = f"{prefix}{child_name}." if prefix else f"{child_name}."
-            # TODO (andrei aksionau): how necessary it is to have this recursion
             self._shard_parameters(child_module, prefix=child_prefix)
 
     def _register_hooks(self, module: nn.Module, prefix: str = "") -> None:
-        # Register hooks ONCE per submodule, passing all parameters belonging to that submodule
+        """
+        Traverses the module tree to attach forward execution hooks to submodules.
+
+        Order: Processes child submodules first to attach hooks to nn.Module containers.
+        Target: Operates on nn.Module containers (PyTorch hooks must attach to modules, not parameters).
+        """
+        # 1. Outer Loop: Identify target child modules (containers) that execute forward passes.
         for child_name, child_module in module.named_children():
             child_prefix = f"{prefix}{child_name}." if prefix else f"{child_name}."
 
-            # Find all sharded parameters for this child module
+            # 2. Inner Loop: Find all sharded parameters owned specifically by this `child_module`.
             child_params = [
                 self.sharded_params[f"{child_prefix}{p_name}"]
                 for p_name, _ in child_module.named_parameters(recurse=False)
                 if f"{child_prefix}{p_name}" in self.sharded_params
             ]
 
-            # Register one pre-hook and post-hook per parameter on the child module
-            # TODO (andrei aksionau): Why don't we register here the backward hook too?
+            # 3. Attach execution hooks onto `child_module` for every parameter it requires.
+            # Before child_module.forward(): All-Gather sharded parameters into full parameters.
+            # After child_module.forward(): Free full parameters to release peak GPU memory.
             for sharded in child_params:
                 child_module.register_forward_pre_hook(ForwardPreHook(sharded))
                 child_module.register_forward_hook(ForwardPostHook(sharded))
-                # if sharded.requires_grad:
-                #     register backward hook
 
-            # Recurse down to deeper submodules
+            # 4. Recurse down to register hooks on submodules within `child_module`.
             self._register_hooks(child_module, prefix=child_prefix)
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:

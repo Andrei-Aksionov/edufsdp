@@ -31,9 +31,10 @@ class ForwardPreHook:
         # 1. Gather full tensor
         full_tensor = self.dtensor_param.gather()
 
-        # 2. CRITICAL: Register backward hook on the gathered tensor!
-        # TODO (andrei aksionau): doesn't make sense to do it for every
-        # forward call
+        # 2. Register backward hook on the gathered tensor
+        # Full_tensor is dynamically created every forward pass during gather(). Because it is a fresh Python
+        # torch.Tensor instance each step, register_hook() must be attached to the new tensor instance that PyTorch's
+        # autograd graph actually tracks for that forward step.
         if full_tensor.requires_grad:
             full_tensor.register_hook(BackwardHook(self.dtensor_param))
 
@@ -45,14 +46,6 @@ class ForwardPostHook:
         self.sharded_param = sharded_param
 
     def __call__(self, module: nn.Module, args: tuple[Any, ...], output: Any) -> None:
-        # self.sharded_param.free()
-        # logger.log_parameter_state(
-        #     "HOOK: POST-FORWARD (Restored Local)",
-        #     self.sharded_param.name,
-        #     self.sharded_param.local_param.data,
-        #     full_tensor=None,
-        # )
-
         # Render transition from Gathered back to Sharded
         logger.log_transition(
             event_name="free",
@@ -91,13 +84,9 @@ class BackwardHook:
         )
         # Changing [Replicate()] to [Partial()] in DTensor.from_local() will force DTensor to communicate gradients
         # across processes during backward, bringing Rank 0 and Rank 1 back into alignment
-        # TODO (andrei aksionau): is it a thing only during backward or forward too?
 
-        # Redistribute from Replicate() -> Shard(0)
+        # 2. Redistribute from Replicate() -> Shard(0)
         # DTensor automatically executes reduce_scatter & averages across the mesh!
-        # TODO (andrei aksionau): ⬆ exactly, does it do it automatically or not?
-        # Do I need to manually average gradients?
-        # 2. Redistributing Partial() -> Shard(0) triggers a true REDUCE_SCATTER collective!
         sharded_grad_dtensor = grad_dtensor.redistribute(
             device_mesh=self.dtensor_param.device_mesh, placements=[Shard(dim=0)]
         )
@@ -105,8 +94,8 @@ class BackwardHook:
         sharded_grad = sharded_grad_dtensor.to_local()
 
         # 3. Average the reduced sum across the mesh size
-        # TODO (andrei aksionau): I thought that this should be done automatically.
-        # Need to verify it. Basically the question is what the OP is used: Sum or Average
+        # Because DTensor performs a raw SUM during Partial() reduction, manually dividing by world_size is
+        # necessary to match standard PyTorch gradient scaling unless specified otherwise in custom mesh rules.
         world_size = self.dtensor_param.device_mesh.size()
         sharded_grad.div_(world_size)
 
