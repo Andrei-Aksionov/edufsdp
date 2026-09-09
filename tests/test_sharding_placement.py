@@ -46,8 +46,7 @@ def cleanup_dist_group() -> None:
     dist.destroy_process_group()
 
 
-# class TestFSDPShardingAndPlacement:
-class FSDPShardingAndPlacement:
+class ShardingPlacementTestSuite:
     """Test suite covering static sharding, runtime weight lifecycle, and FSDP2 parity."""
 
     def __init__(self, rank: int, world_size: int) -> None:
@@ -153,55 +152,40 @@ class FSDPShardingAndPlacement:
 # --- Worker Launcher Helper ---
 
 
-def _run_test_method(rank: int, world_size: int, test_method_name: str) -> None:
+def _run_suite_method(rank: int, world_size: int, test_method_name: str) -> None:
     """Spawns process group and dispatches execution to a single test method."""
     setup_dist_group(rank, world_size)
     try:
-        # suite = TestFSDPShardingAndPlacement(rank, world_size)
-        suite = FSDPShardingAndPlacement(rank, world_size)
+        suite = ShardingPlacementTestSuite(rank, world_size)
         getattr(suite, test_method_name)()
     finally:
         cleanup_dist_group()
 
 
-# --- Individual PyTest Test Entry Points ---
+# --- Generic Multiprocessing Test Launcher ---
 
 
-@pytest.mark.parametrize("world_size", [2])
-def test_static_resting_sharding(world_size: int) -> None:
+def test_sharding_suite(test_method_name: str, world_size: int) -> None:
+    """Single generic test entrypoint that executes any suite method across spawned ranks."""
     torch.multiprocessing.spawn(
-        _run_test_method,
-        args=(world_size, "test_static_resting_sharding"),
+        _run_suite_method,
+        args=(world_size, test_method_name),
         nprocs=world_size,
         join=True,
     )
 
 
-@pytest.mark.parametrize("world_size", [2])
-def test_forward_pre_hook_all_gather_shapes(world_size: int) -> None:
-    torch.multiprocessing.spawn(
-        _run_test_method,
-        args=(world_size, "test_forward_pre_hook_all_gather_shapes"),
-        nprocs=world_size,
-        join=True,
-    )
+# --- PyTest Hook for Auto-Discovery ---
 
 
-@pytest.mark.parametrize("world_size", [2])
-def test_forward_post_hook_memory_cleanup_shapes(world_size: int) -> None:
-    torch.multiprocessing.spawn(
-        _run_test_method,
-        args=(world_size, "test_forward_post_hook_memory_cleanup_shapes"),
-        nprocs=world_size,
-        join=True,
-    )
-
-
-@pytest.mark.parametrize("world_size", [2])
-def test_fsdp2_dtensor_parity_all_layers(world_size: int) -> None:
-    torch.multiprocessing.spawn(
-        _run_test_method,
-        args=(world_size, "test_fsdp2_dtensor_parity_all_layers"),
-        nprocs=world_size,
-        join=True,
-    )
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    """Dynamically parametrizes `test_sharding_suite` with every `test_*` method in `ShardingPlacementTestSuite`."""
+    if "test_method_name" in metafunc.fixturenames:
+        # Extract all method names starting with 'test_' from the container class
+        method_names = [
+            attr
+            for attr in dir(ShardingPlacementTestSuite)
+            if attr.startswith("test_") and callable(getattr(ShardingPlacementTestSuite, attr))
+        ]
+        metafunc.parametrize("test_method_name", method_names)
+        metafunc.parametrize("world_size", [2])
