@@ -12,7 +12,7 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch.distributed.device_mesh import DeviceMesh
 
-from gloofsdp.hooks import BackwardPreHook, ForwardPostHook, ForwardPreHook
+from gloofsdp.hooks import BackwardPostHook, BackwardPreHook, ForwardPostHook, ForwardPreHook
 from gloofsdp.sharded_parameter import DTensorShardedParameter
 from gloofsdp.state_dict import StateDictHandler, StateDictType
 
@@ -90,6 +90,7 @@ class EducationalFSDP(nn.Module):
                 child_module.register_forward_pre_hook(ForwardPreHook(sharded))
                 child_module.register_forward_hook(ForwardPostHook(sharded))
                 child_module.register_full_backward_pre_hook(BackwardPreHook(sharded))
+                child_module.register_full_backward_hook(BackwardPostHook(sharded))
 
             # 4. Recurse down to register hooks on submodules within `child_module`.
             self._register_hooks(child_module, prefix=child_prefix)

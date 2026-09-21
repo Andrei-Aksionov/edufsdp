@@ -222,3 +222,12 @@ class BackwardPreHook:
     def __call__(self, module: nn.Module, grad_output: Any) -> None:
         # All-Gather #2: Re-construct full weight tensor needed for dW math
         self.dtensor_param.gather()
+
+
+class BackwardPostHook:
+    def __init__(self, sharded_param: DTensorShardedParameter) -> None:
+        self.sharded_param = sharded_param
+
+    def __call__(self, module: nn.Module, grad_input: tuple, grad_output: tuple) -> None:
+        # Reshard weight data back to resting local shape
+        self.sharded_param.free()
