@@ -57,7 +57,7 @@ class TestFSDPLossDecrease:
         criterion = nn.MSELoss()
 
         # 3. Create Deterministic Per-Rank Input Data & Target Data
-        x = torch.randn(2, 8, device=device)
+        x = torch.randn(2, 8, device=device, requires_grad=True)
         target = torch.randn(2, 4, device=device)
 
         print(f"[Rank {rank}] Running 5-step convergence comparison...")

@@ -100,7 +100,7 @@ def test_state_dict_compatibility():
     # TEST C: Local / Sharded Checkpoint Resumption Cycle
     # ------------------------------------------------------------------
     # Simulate a training step to mutate weights
-    x = torch.randn(4, 16)
+    x = torch.randn(4, 16, requires_grad=True)
     target = torch.randn(4, 8)
     criterion = nn.MSELoss()
 
