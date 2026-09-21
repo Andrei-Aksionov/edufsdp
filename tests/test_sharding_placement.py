@@ -138,11 +138,10 @@ class ShardingPlacementTestSuite:
         fully_shard(model_native, mesh=self.device_mesh)
 
         for param_name, (_, expected_local_shape) in self.expected_shapes.items():
-            layer_name, _ = param_name.split(".")
+            layer_name, attr = param_name.split(".")
 
-            custom_local = wrapped_custom.sharded_params[param_name].local_param
-            native_layer = getattr(model_native, layer_name)
-            native_local = native_layer.weight.to_local()
+            custom_local = getattr(getattr(wrapped_custom.module, layer_name), attr)
+            native_local = getattr(getattr(model_native, layer_name), attr).to_local()
 
             assert custom_local.shape == native_local.shape == expected_local_shape, (
                 f"Rank {self.rank}: {param_name} shape mismatch - Custom {custom_local.shape}, "
@@ -177,21 +176,18 @@ class ShardingPlacementTestSuite:
             layer_name, attr = param_name.split(".")
 
             custom_param = getattr(getattr(wrapped_custom.module, layer_name), attr)
-            native_param = getattr(getattr(model_native, layer_name), attr)
-
-            custom_local = wrapped_custom.sharded_params[param_name].local_param
-            native_local = native_param.to_local()
+            native_param = getattr(getattr(model_native, layer_name), attr).to_local()
 
             # Shape parity
-            assert custom_local.shape == native_local.shape == expected_local_shape, (
-                f"Rank {self.rank}: Post-forward {param_name} shape mismatch - Custom {custom_local.shape}, "
-                f"Native FSDP2 {native_local.shape}"
+            assert custom_param.shape == native_param.shape == expected_local_shape, (
+                f"Rank {self.rank}: Post-forward {param_name} shape mismatch - Custom {custom_param.shape}, "
+                f"Native FSDP2 {native_param.shape}"
             )
 
             # Value parity (rested sharded weights unchanged)
             torch.testing.assert_close(
-                custom_local,
-                native_local,
+                custom_param,
+                native_param,
                 msg=f"Rank {self.rank}: Post-forward {param_name} weight values diverged from Native FSDP2",
             )
 
@@ -231,33 +227,34 @@ class ShardingPlacementTestSuite:
 
         # 3. Assert local gradient shapes and FSDP2 parity for all sharded layers
         for param_name, (_, expected_local_shape) in self.expected_shapes.items():
-            layer_name, _ = param_name.split(".")
-            sharded_param = wrapped_custom.sharded_params[param_name]
+            layer_name, attr = param_name.split(".")
+            # sharded_param = wrapped_custom.sharded_params[param_name]
+            sharded_param = getattr(getattr(wrapped_custom.module, layer_name), attr)
 
             # Verify local_param has a gradient populated
-            assert sharded_param.local_param.grad is not None, (
+            assert sharded_param.grad is not None, (
                 f"Rank {self.rank}: {param_name} local_param.grad was None after loss.backward()"
             )
 
             # Verify gradient shape matches local parameter shape exactly
-            local_grad_shape = sharded_param.local_param.grad.shape
+            local_grad_shape = sharded_param.grad.shape
             assert local_grad_shape == expected_local_shape, (
                 f"Rank {self.rank}: {param_name} local grad shape {local_grad_shape} "
                 f"does not match expected local parameter shape {expected_local_shape}"
             )
 
             # Verify local gradient element count parity against Native FSDP2
-            native_layer = getattr(model_native, layer_name)
-            native_local_grad = native_layer.weight.grad.to_local()
+            native_param = getattr(getattr(model_native, layer_name), attr)
+            native_local_grad = native_param.grad.to_local()
 
-            assert sharded_param.local_param.grad.shape == native_local_grad.shape, (
+            assert sharded_param.grad.shape == native_local_grad.shape, (
                 f"Rank {self.rank}: {param_name} gradient element shape ({sharded_param.local_param.grad.shape}) "
                 f"does not match Native FSDP2 local gradient element shape ({native_local_grad.shape})"
             )
 
             try:
                 torch.testing.assert_close(
-                    sharded_param.local_param.grad,
+                    sharded_param.grad,
                     native_local_grad,
                     rtol=1e-5,
                     atol=1e-8,
@@ -362,7 +359,7 @@ class ShardingPlacementTestSuite:
             native_param = getattr(getattr(model_native, layer_name), attr)
 
             # 1. Weight shape & value parity post-backward (restored sharded state)
-            custom_weight_local = wrapped_custom.sharded_params[param_name].local_param
+            custom_weight_local = custom_param
             native_weight_local = native_param.to_local()
 
             assert custom_weight_local.shape == native_weight_local.shape == expected_local_shape, (
