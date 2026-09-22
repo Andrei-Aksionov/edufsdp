@@ -53,7 +53,7 @@ class TestFSDPLossDecrease:
         base_model = MLP().to(device)
 
         fsdp_model = EducationalFSDP(base_model, device_mesh=mesh)
-        fsdp_optimizer = torch.optim.SGD(fsdp_model.parameters(), lr=0.01)
+        fsdp_optimizer = torch.optim.Adam(fsdp_model.parameters(), lr=0.1)
         criterion = nn.MSELoss()
 
         # 3. Create Deterministic Per-Rank Input Data & Target Data

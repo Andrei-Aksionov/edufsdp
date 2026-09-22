@@ -33,7 +33,7 @@ def main() -> None:
     raw_model = MLP()
     fsdp_model = EducationalFSDP(raw_model, device_mesh=mesh)
 
-    optimizer = torch.optim.SGD(fsdp_model.parameters(), lr=0.1)
+    optimizer = torch.optim.Adam(fsdp_model.parameters(), lr=0.1)
     criterion = nn.MSELoss()
 
     inputs = torch.randn(2, 8)
