@@ -1,94 +1,117 @@
 import os
 import socket
-import subprocess  # ruff: ignore[suspicious-subprocess-import]
-import sys
 
 import pytest
+import torch
 
-# @pytest.fixture
-# def init_gloo():
-#     """Initializes Gloo process group for worker processes and handles cleanup."""
-#     if os.environ.get("IN_TORCHRUN_WORKER") == "1" and not dist.is_initialized():
-#         dist.init_process_group(backend="gloo")
-#         yield
-#         dist.destroy_process_group()
-#     else:
-#         yield
+# Ensures child processes inherit the debugpy agent cleanly
+if torch.multiprocessing.get_start_method(allow_none=True) != "spawn":
+    torch.multiprocessing.set_start_method("spawn", force=True)
 
 
-def get_free_port() -> int:
-    """Finds and returns an available port allocated by the OS kernel."""
+def get_free_port() -> str:
+    """Allocates an available free port on localhost."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+        return str(s.getsockname()[1])
+
+
+# def _dist_worker(
+#     rank: int,
+#     world_size: int,
+#     master_port: str,
+#     fn: Callable,
+#     args: tuple,
+#     kwargs: dict,
+# ) -> None:
+#     """Worker function executed inside spawned processes."""
+#     os.environ["MASTER_ADDR"] = "127.0.0.1"
+#     os.environ["MASTER_PORT"] = master_port
+
+#     # Initialize GLOO for CPU-based multi-process testing
+#     dist.init_process_group(
+#         backend="gloo",
+#         rank=rank,
+#         world_size=world_size,
+#     )
+#     try:
+#         # Pass rank and world_size into the test if requested by function parameters
+#         if "rank" in fn.__code__.co_varnames:
+#             kwargs["rank"] = rank
+#         if "world_size" in fn.__code__.co_varnames:
+#             kwargs["world_size"] = world_size
+
+#         fn(*args, **kwargs)
+#     finally:
+#         dist.destroy_process_group()
+
+
+def _spawn_worker(
+    rank: int,
+    world_size: int,
+    port: str,
+    test_func,
+    test_instance,
+    args,
+    kwargs,
+) -> None:
+    """Target function executed by mp.spawn inside each worker process."""
+    os.environ["MASTER_ADDR"] = "127.0.0.1"
+    os.environ["MASTER_PORT"] = port
+    os.environ["RANK"] = str(rank)
+    os.environ["WORLD_SIZE"] = str(world_size)
+    os.environ["LOCAL_RANK"] = str(rank)
+
+    # Re-bind bound method to the instance inside the worker process
+    if test_instance is not None:
+        # Run setup_method manually inside child process if present
+        if hasattr(test_instance, "setup_method"):
+            test_instance.setup_method(test_func)
+
+        try:
+            test_func(test_instance, *args, **kwargs)
+        finally:
+            if hasattr(test_instance, "teardown_method"):
+                test_instance.teardown_method(test_func)
+    else:
+        test_func(*args, **kwargs)
 
 
 def pytest_configure(config):
     config.addinivalue_line(
         "markers",
-        "torchrun(nproc=2, timeout=30): marks test to be executed via torch.distributed.run",
+        "multi_rank(world_size=2): run test across multiple CPU processes via torch.multiprocessing.spawn",
     )
-
-    # PATH B: Inside torchrun Worker - Mute stdout on rank > 0
-    if os.environ.get("IN_TORCHRUN_WORKER") == "1":
-        rank = int(os.environ.get("RANK", "0"))
-        if rank != 0:
-            # Direct non-zero rank prints to devnull so only Rank 0 logs to terminal
-            sys.stdout = open(os.devnull, "w")  # ruff: ignore[open-file-with-context-handler]
 
 
 @pytest.hookimpl(tryfirst=True)
-def pytest_runtest_protocol(item, nextitem):
-    """Intercepts test execution in Parent process BEFORE fixtures run."""
-    marker = item.get_closest_marker("torchrun")
-
+def pytest_pyfunc_call(pyfuncitem):
+    """Intercepts test function call before execution."""
+    marker = pyfuncitem.get_closest_marker("multi_rank")
     if not marker:
-        return None
+        return None  # Fallback to standard single-process pytest execution
 
-    # PATH A: Parent Pytest Process (Orchestrates torchrun)
-    if os.environ.get("IN_TORCHRUN_WORKER") != "1":
-        nproc = marker.kwargs.get("nproc", 2)
-        timeout = marker.kwargs.get("timeout", 30)
-        port = marker.kwargs.get("port") or get_free_port()
-        test_node = item.nodeid
+    world_size = marker.kwargs.get("world_size", 2)
+    port = get_free_port()
 
-        cmd = [
-            sys.executable,
-            "-m",
-            "torch.distributed.run",
-            "--nnodes=1",
-            f"--nproc-per-node={nproc}",
-            "--master-addr=127.0.0.1",
-            f"--master-port={port}",
-            "-m",
-            "pytest",
-            test_node,
-            # "--no-header",  # Strip duplicate header banner from worker session
-            "-o",
-            "addopts=",
-        ]
+    # Retrieve the raw, un-wrapped top-level function object directly from the test item
+    test_func = pyfuncitem.obj.__func__ if hasattr(pyfuncitem.obj, "__func__") else pyfuncitem.obj
+    test_instance = pyfuncitem.instance
 
-        env = os.environ.copy()
-        env["IN_TORCHRUN_WORKER"] = "1"
-        env["TORCH_CPP_LOG_LEVEL"] = "ERROR"
+    test_args = ()
+    test_kwargs = {
+        name: pyfuncitem._fixtureinfo.argvalues[name]
+        for name in pyfuncitem.fixturenames
+        # if name in pyfuncitem._fixtureinfo.argvalues
+        if name in pyfuncitem._fixtureinfo.argnames
+    }
 
-        try:
-            # Unbuffered live stream directly to standard terminal streams
-            result = subprocess.run(cmd, env=env, timeout=timeout)
+    # mp.spawn receives the top-level un-wrapped function reference
+    torch.multiprocessing.spawn(
+        _spawn_worker,
+        args=(world_size, port, test_func, test_instance, test_args, test_kwargs),
+        nprocs=world_size,
+        join=True,
+    )
 
-            if result.returncode != 0:
-                pytest.fail(
-                    f"\n❌ [torchrun failed with exit code {result.returncode} on port {port} for node {test_node}]",
-                    pytrace=False,
-                )
-
-        except subprocess.TimeoutExpired:
-            pytest.fail(
-                f"\n⏳ [DEADLOCK / TIMEOUT DETECTED]: torchrun exceeded {timeout}s limit for test {test_node}!",
-                pytrace=False,
-            )
-
-        return True
-
-    # PATH B: Inside torchrun Worker Process
-    return None
+    return True  # Indicates PyTest that the test execution has been handled

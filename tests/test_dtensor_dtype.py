@@ -5,6 +5,7 @@ and FSDP2 DTensor parity across all layers.
 
 import copy
 import os
+from datetime import timedelta
 
 import pytest
 import torch
@@ -47,25 +48,43 @@ def cleanup_dist_group() -> None:
     dist.destroy_process_group()
 
 
-class DTensorTestSuite:
+@pytest.mark.multi_rank(world_size=2)
+class TestDTensorConsistency:
     """Test suite covering static sharding, runtime weight lifecycle, and FSDP2 parity."""
 
-    def __init__(self, rank: int, world_size: int) -> None:
+    def setup_method(self, method) -> None:
+        """Executes INSIDE each worker process immediately after mp.spawn."""
+        if "RANK" not in os.environ or "WORLD_SIZE" not in os.environ:
+            return  # Skip initialization on parent PyTest runner process
+
+        rank = int(os.environ["RANK"])
+        world_size = int(os.environ["WORLD_SIZE"])
+
+        dist.init_process_group(
+            backend="gloo",
+            rank=rank,
+            world_size=world_size,
+            timeout=timedelta(seconds=28),
+        )
+
         self.rank = rank
         self.world_size = world_size
         self.device = torch.device("cpu")
-        self.device_mesh = init_device_mesh(str(self.device), (world_size,))
+        self.device_mesh = init_device_mesh("cpu", (self.world_size,))
 
-        # Source base model instance
         torch.manual_seed(42)
         self.base_model = SimpleMLP()
 
-        # Target expected shapes for all layers: layer_name -> (global_shape, local_shard_shape)
+        # Target expected shapes: layer_name -> (global_shape, local_shard_shape)
         self.expected_shapes = {
-            "fc1.weight": (torch.Size([4, 16]), torch.Size([4 // world_size, 16])),
-            # "fc2.weight": (torch.Size([4, 8]), torch.Size([4 // world_size, 8])),
-            "fc2.weight": (torch.Size([8, 4]), torch.Size([8 // world_size, 4])),
+            "fc1.weight": (torch.Size([4, 16]), torch.Size([4 // self.world_size, 16])),
+            "fc2.weight": (torch.Size([8, 4]), torch.Size([8 // self.world_size, 4])),
         }
+
+    def teardown_method(self, method) -> None:
+        """Tears down process group after test completion."""
+        if dist.is_initialized():
+            dist.destroy_process_group()
 
     def test_dtensor_type_lifecycle_forward(self) -> None:
         """Verifies that module parameters maintain DTensor instance types pre/post forward."""
@@ -177,45 +196,3 @@ class DTensorTestSuite:
                 f"Rank {self.rank}: {param_name}.grad local shape mismatch - Custom {custom_param.grad.to_local().shape}, "
                 f"Native {native_param.grad.to_local().shape}"
             )
-
-
-# --- Worker Launcher Helper ---
-
-
-def _run_suite_method(rank: int, world_size: int, test_method_name: str) -> None:
-    """Spawns process group and dispatches execution to a single test method."""
-    setup_dist_group(rank, world_size)
-    try:
-        suite = DTensorTestSuite(rank, world_size)
-        getattr(suite, test_method_name)()
-    finally:
-        cleanup_dist_group()
-
-
-# --- Generic Multiprocessing Test Launcher ---
-
-
-def test_sharding_suite(test_method_name: str, world_size: int) -> None:
-    """Single generic test entrypoint that executes any suite method across spawned ranks."""
-    torch.multiprocessing.spawn(
-        _run_suite_method,
-        args=(world_size, test_method_name),
-        nprocs=world_size,
-        join=True,
-    )
-
-
-# --- PyTest Hook for Auto-Discovery ---
-
-
-def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
-    """Dynamically parametrizes `test_sharding_suite` with every `test_*` method in `ShardingPlacementTestSuite`."""
-    if "test_method_name" in metafunc.fixturenames:
-        # Extract all method names starting with 'test_' from the container class
-        method_names = [
-            attr
-            for attr in dir(DTensorTestSuite)
-            if attr.startswith("test_") and callable(getattr(DTensorTestSuite, attr))
-        ]
-        metafunc.parametrize("test_method_name", method_names)
-        metafunc.parametrize("world_size", [2])

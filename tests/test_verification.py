@@ -35,7 +35,7 @@ def init_distributed():
     return rank, world_size
 
 
-@pytest.mark.torchrun(nproc=2)
+@pytest.mark.multi_rank(world_size=2)
 def test_run_verification_suite():
     rank, world_size = init_distributed()
     device = torch.device("cpu")
@@ -101,7 +101,7 @@ def test_run_verification_suite():
     dist.destroy_process_group()
 
 
-@pytest.mark.torchrun(nproc=2)
+@pytest.mark.multi_rank(world_size=2)
 def test_run_verification_loss_decreases():
     rank, world_size = init_distributed()
     device = torch.device("cpu")

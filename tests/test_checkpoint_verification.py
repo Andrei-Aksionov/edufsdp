@@ -30,11 +30,11 @@ def init_distributed():
         dist.init_process_group(backend="gloo")
     rank = dist.get_rank()
     world_size = dist.get_world_size()
-    torch.manual_seed(42 + rank)
+    torch.manual_seed(42)
     return rank, world_size
 
 
-@pytest.mark.torchrun(nproc=2)
+@pytest.mark.multi_rank(world_size=2)
 def test_state_dict_compatibility():
     rank, world_size = init_distributed()
     device = torch.device("cpu")
