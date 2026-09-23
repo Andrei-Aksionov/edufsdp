@@ -73,14 +73,14 @@ class ShardingPlacementTestSuite:
 
         for param_name, (global_shape, expected_local_shape) in self.expected_shapes.items():
             sharded_param = wrapped.sharded_params[param_name]
-            assert sharded_param.local_param.shape == expected_local_shape, (
+            assert sharded_param.local_param.to_local().shape == expected_local_shape, (
                 f"Rank {self.rank}: {param_name} internal local shape "
                 f"{sharded_param.local_param.shape} != {expected_local_shape}"
             )
             assert sharded_param.global_shape == global_shape
 
             layer_name, attr = param_name.split(".")
-            module_param = getattr(getattr(wrapped.module, layer_name), attr)
+            module_param = getattr(getattr(wrapped.module, layer_name), attr).to_local()
             assert module_param.shape == expected_local_shape, (
                 f"Rank {self.rank}: {param_name} module resting shape {module_param.shape} != {expected_local_shape}"
             )
@@ -121,7 +121,7 @@ class ShardingPlacementTestSuite:
 
         for param_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = param_name.split(".")
-            module_param = getattr(getattr(wrapped.module, layer_name), attr)
+            module_param = getattr(getattr(wrapped.module, layer_name), attr).to_local()
             assert module_param.shape == expected_local_shape, (
                 f"Rank {self.rank}: {param_name} post-forward shape was not freed "
                 f"back to {expected_local_shape}, got {module_param.shape}"
@@ -140,7 +140,7 @@ class ShardingPlacementTestSuite:
         for param_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = param_name.split(".")
 
-            custom_local = getattr(getattr(wrapped_custom.module, layer_name), attr)
+            custom_local = getattr(getattr(wrapped_custom.module, layer_name), attr).to_local()
             native_local = getattr(getattr(model_native, layer_name), attr).to_local()
 
             assert custom_local.shape == native_local.shape == expected_local_shape, (
@@ -175,7 +175,7 @@ class ShardingPlacementTestSuite:
         for param_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = param_name.split(".")
 
-            custom_param = getattr(getattr(wrapped_custom.module, layer_name), attr)
+            custom_param = getattr(getattr(wrapped_custom.module, layer_name), attr).to_local()
             native_param = getattr(getattr(model_native, layer_name), attr).to_local()
 
             # Shape parity
@@ -229,17 +229,18 @@ class ShardingPlacementTestSuite:
         for param_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = param_name.split(".")
             # sharded_param = wrapped_custom.sharded_params[param_name]
-            sharded_param = getattr(getattr(wrapped_custom.module, layer_name), attr)
+            custom_param = getattr(getattr(wrapped_custom.module, layer_name), attr)
+            custom_local_grad = custom_param.grad.to_local()
 
             # Verify local_param has a gradient populated
-            assert sharded_param.grad is not None, (
+            assert custom_local_grad is not None, (
                 f"Rank {self.rank}: {param_name} local_param.grad was None after loss.backward()"
             )
 
             # Verify gradient shape matches local parameter shape exactly
-            local_grad_shape = sharded_param.grad.shape
-            assert local_grad_shape == expected_local_shape, (
-                f"Rank {self.rank}: {param_name} local grad shape {local_grad_shape} "
+            custom_grad_shape = custom_local_grad.shape
+            assert custom_grad_shape == expected_local_shape, (
+                f"Rank {self.rank}: {param_name} local grad shape {custom_grad_shape} "
                 f"does not match expected local parameter shape {expected_local_shape}"
             )
 
@@ -247,14 +248,14 @@ class ShardingPlacementTestSuite:
             native_param = getattr(getattr(model_native, layer_name), attr)
             native_local_grad = native_param.grad.to_local()
 
-            assert sharded_param.grad.shape == native_local_grad.shape, (
-                f"Rank {self.rank}: {param_name} gradient element shape ({sharded_param.local_param.grad.shape}) "
+            assert custom_local_grad.shape == native_local_grad.shape, (
+                f"Rank {self.rank}: {param_name} gradient element shape ({custom_local_grad.shape}) "
                 f"does not match Native FSDP2 local gradient element shape ({native_local_grad.shape})"
             )
 
             try:
                 torch.testing.assert_close(
-                    sharded_param.grad,
+                    custom_local_grad,
                     native_local_grad,
                     rtol=1e-5,
                     atol=1e-8,
@@ -317,18 +318,18 @@ class ShardingPlacementTestSuite:
             module_param = getattr(getattr(wrapped.module, layer_name), attr)
 
             # 1. Weight memory must be freed back to local sharded shape on the actual module attribute
-            assert module_param.shape == expected_local_shape, (
+            assert module_param.to_local().shape == expected_local_shape, (
                 f"Rank {self.rank}: Post-backward {param_name} weight shape was not freed "
-                f"back to {expected_local_shape}, got {module_param.shape}"
+                f"back to {expected_local_shape}, got {module_param.to_local().shape}"
             )
 
             # 2. Gradient must exist directly on the module parameter attribute and match the sharded shape
-            assert module_param.grad is not None, (
+            assert module_param.grad.to_local() is not None, (
                 f"Rank {self.rank}: {param_name}.grad was None on module parameter post-backward"
             )
-            assert module_param.grad.shape == expected_local_shape, (
+            assert module_param.grad.to_local().shape == expected_local_shape, (
                 f"Rank {self.rank}: Post-backward {param_name}.grad shape was "
-                f"{module_param.grad.shape}, expected sharded shape {expected_local_shape}"
+                f"{module_param.grad.to_local().shape}, expected sharded shape {expected_local_shape}"
             )
 
     def test_fsdp2_dtensor_parity_post_backward(self) -> None:
@@ -359,7 +360,7 @@ class ShardingPlacementTestSuite:
             native_param = getattr(getattr(model_native, layer_name), attr)
 
             # 1. Weight shape & value parity post-backward (restored sharded state)
-            custom_weight_local = custom_param
+            custom_weight_local = custom_param.to_local()
             native_weight_local = native_param.to_local()
 
             assert custom_weight_local.shape == native_weight_local.shape == expected_local_shape, (
@@ -382,7 +383,9 @@ class ShardingPlacementTestSuite:
             )
 
             # For Native FSDP2 DTensors, grad is also a DTensor/tensor whose local shard matches sharded_shape
-            custom_grad_local = custom_param.grad
+            custom_grad_local = (
+                custom_param.grad.to_local() if hasattr(custom_param.grad, "to_local") else custom_param.grad
+            )
             native_grad_local = (
                 native_param.grad.to_local() if hasattr(native_param.grad, "to_local") else native_param.grad
             )

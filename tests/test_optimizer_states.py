@@ -134,7 +134,11 @@ class OptimizerStatesTestSuite:
                     f"Rank {self.rank}: Key '{state_key}' missing from custom optimizer state for {param_name}"
                 )
 
-                custom_tensor = custom_state[state_key]
+                custom_tensor = (
+                    custom_state[state_key].to_local()
+                    if hasattr(custom_state[state_key], "to_local")
+                    else custom_state[state_key]
+                )
                 native_tensor = (
                     native_state[state_key].to_local()
                     if hasattr(native_state[state_key], "to_local")

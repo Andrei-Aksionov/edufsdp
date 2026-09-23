@@ -52,8 +52,12 @@ class DTensorShardedParameter:
         with torch.no_grad():
             temp_dtensor = distribute_tensor(param.data, device_mesh=self.device_mesh, placements=[Shard(dim=0)])
             # Create leaf parameter managed directly by the optimizer
+            # self.local_param = nn.Parameter(
+            #     temp_dtensor.to_local().clone(),
+            #     requires_grad=param.requires_grad,
+            # )
             self.local_param = nn.Parameter(
-                temp_dtensor.to_local().clone(),
+                temp_dtensor,
                 requires_grad=param.requires_grad,
             )
 
@@ -83,11 +87,11 @@ class DTensorShardedParameter:
 
         if self.local_param.requires_grad and torch.is_grad_enabled():
             # Apply custom autograd function to register node in autograd graph
-            full_tensor = FSDPAllGatherFunction.apply(self.local_param, self)
+            full_tensor = FSDPAllGatherFunction.apply(self.local_param.to_local(), self)
         else:
             # Inference/no-grad evaluation path
             with torch.no_grad():
-                full_tensor = FSDPAllGatherFunction.apply(self.local_param, self)
+                full_tensor = FSDPAllGatherFunction.apply(self.local_param.to_local(), self)
 
         # Assign reconstructed tensor onto module attribute for forward computation
         self._set_on_module(full_tensor)
