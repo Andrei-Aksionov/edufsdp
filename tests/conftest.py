@@ -62,17 +62,18 @@ def _spawn_worker(
     os.environ["WORLD_SIZE"] = str(world_size)
     os.environ["LOCAL_RANK"] = str(rank)
 
+    # Explicitly tell setup_method that this is a spawned worker.
+    os.environ["PYTEST_TORCH_MP_SPAWN_WORKER"] = "1"
+
     # Re-bind bound method to the instance inside the worker process
     if test_instance is not None:
         # Run setup_method manually inside child process if present
-        if hasattr(test_instance, "setup_method"):
-            test_instance.setup_method(test_func)
+        test_instance.setup_method(test_func)
 
         try:
             test_func(test_instance, *args, **kwargs)
         finally:
-            if hasattr(test_instance, "teardown_method"):
-                test_instance.teardown_method(test_func)
+            test_instance.teardown_method(test_func)
     else:
         test_func(*args, **kwargs)
 

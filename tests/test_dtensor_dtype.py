@@ -4,87 +4,19 @@ and FSDP2 DTensor parity across all layers.
 """
 
 import copy
-import os
-from datetime import timedelta
 
 import pytest
 import torch
-import torch.distributed as dist
-import torch.nn as nn
-from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.fsdp import fully_shard
 from torch.distributed.tensor import DTensor
 
 from gloofsdp.wrapper import EducationalFSDP
-
-
-class SimpleMLP(nn.Module):
-    """Simple testing module with multi-dimensional linear layers."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        # fc1: (4, 16) -> Rank shard: (2, 16) on 2 ranks
-        self.fc1 = nn.Linear(16, 4, bias=False)
-        # fc2: (4, 8)  -> Rank shard: (2, 8) on 2 ranks
-        self.fc2 = nn.Linear(4, 8, bias=False)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.fc2(self.fc1(x))
-
-
-def setup_dist_group(rank: int, world_size: int) -> None:
-    """Sets up a GLOO process group for CPU-based multi-rank testing."""
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "29500"
-    dist.init_process_group(
-        backend="gloo",
-        rank=rank,
-        world_size=world_size,
-    )
-
-
-def cleanup_dist_group() -> None:
-    """Tears down distributed process group."""
-    dist.destroy_process_group()
+from tests.base.distributed_test import DistributedTestBase
 
 
 @pytest.mark.multi_rank(world_size=2)
-class TestDTensorConsistency:
+class TestDTensorConsistency(DistributedTestBase):
     """Test suite covering static sharding, runtime weight lifecycle, and FSDP2 parity."""
-
-    def setup_method(self, method) -> None:
-        """Executes INSIDE each worker process immediately after mp.spawn."""
-        if "RANK" not in os.environ or "WORLD_SIZE" not in os.environ:
-            return  # Skip initialization on parent PyTest runner process
-
-        rank = int(os.environ["RANK"])
-        world_size = int(os.environ["WORLD_SIZE"])
-
-        dist.init_process_group(
-            backend="gloo",
-            rank=rank,
-            world_size=world_size,
-            timeout=timedelta(seconds=28),
-        )
-
-        self.rank = rank
-        self.world_size = world_size
-        self.device = torch.device("cpu")
-        self.device_mesh = init_device_mesh("cpu", (self.world_size,))
-
-        torch.manual_seed(42)
-        self.base_model = SimpleMLP()
-
-        # Target expected shapes: layer_name -> (global_shape, local_shard_shape)
-        self.expected_shapes = {
-            "fc1.weight": (torch.Size([4, 16]), torch.Size([4 // self.world_size, 16])),
-            "fc2.weight": (torch.Size([8, 4]), torch.Size([8 // self.world_size, 4])),
-        }
-
-    def teardown_method(self, method) -> None:
-        """Tears down process group after test completion."""
-        if dist.is_initialized():
-            dist.destroy_process_group()
 
     def test_dtensor_type_lifecycle_forward(self) -> None:
         """Verifies that module parameters maintain DTensor instance types pre/post forward."""
