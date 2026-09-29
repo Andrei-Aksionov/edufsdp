@@ -41,26 +41,15 @@ def main() -> None:
 
     for _ in range(1):
         logger.log_rank0(f"\n {'=' * 50} Forward pass {'=' * 50}\n")
-        # logger.log_ordered("=== MEMORY SUMMARY BEFORE FORWARD ===\n" + memory_tracker.get_summary())
-        # logger.log_ordered("=== MEMORY SUMMARY BEFORE FORWARD ===\n")
 
         outputs = fsdp_model(inputs)
         loss = criterion(outputs, targets)
         # logger.log_ordered(f"Loss value: {loss.item():.4f}")
 
-        # logger.log_ordered("=== MEMORY SUMMARY AFTER FORWARD ===\n" + memory_tracker.get_summary())
-
         optimizer.zero_grad()
         logger.log_rank0(f"\n {'=' * 50} Backward pass {'=' * 50}\n")
         logger.reset_step()
         loss.backward()
-
-        # for name, sp in fsdp_model.sharded_params.items():
-        #     print(f"[Rank {dist.get_rank()}] {name} grad is None? {sp.local_param.grad is None}")
-        #     if sp.local_param.grad is not None:
-        #         print(f"[Rank {dist.get_rank()}] {name} grad norm: {sp.local_param.grad.norm().item()}")
-
-        # logger.log_ordered("=== MEMORY SUMMARY AFTER BACKWARD ===\n" + memory_tracker.get_summary())
 
         optimizer.step()
 

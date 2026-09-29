@@ -13,7 +13,6 @@ from torch.distributed.device_mesh import DeviceMesh
 from torch.distributed.tensor import Shard, distribute_tensor
 
 from gloofsdp.hooks import FSDPAllGatherFunction
-from gloofsdp.memory_tracker import memory_tracker
 
 
 class DTensorShardedParameter:
@@ -64,9 +63,6 @@ class DTensorShardedParameter:
         start_idx = self.device_mesh.get_rank() * self.shard_size
         end_idx = start_idx + self.shard_size
         self.shard_range = (start_idx, end_idx)
-
-        # Track sharded memory allocation
-        memory_tracker.track_sharded_param(self.local_param)
 
         # 3. Immediately set module attribute to initial local shard
         self.free()

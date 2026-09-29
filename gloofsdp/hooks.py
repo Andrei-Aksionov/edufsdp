@@ -47,7 +47,6 @@ import torch.nn as nn
 from torch.distributed.tensor import DTensor, Partial, Replicate, Shard
 
 from gloofsdp.logging import logger
-from gloofsdp.memory_tracker import memory_tracker
 
 if TYPE_CHECKING:
     from gloofsdp.sharded_parameter import DTensorShardedParameter
@@ -106,9 +105,6 @@ class FSDPAllGatherFunction(torch.autograd.Function):
             placements=[Replicate()],
         )
 
-        # Track full tensor allocation in global memory profiler
-        memory_tracker.track_gathered_param(replicated_dtensor)
-
         # Return unwrapped raw PyTorch tensor to be set on module attribute
         return replicated_dtensor.to_local()
 
@@ -131,17 +127,14 @@ class FSDPAllGatherFunction(torch.autograd.Function):
         dtensor_param: "DTensorShardedParameter" = ctx.dtensor_param
         device_mesh = dtensor_param.device_mesh
 
-        # Track full incoming gradient allocation
-        memory_tracker.track_gradient(grad_output)
-
-        logger.log_transition(
-            event_name="reduce_scatter",
-            param_name=f"{dtensor_param.name}.grad",
-            total_elements=dtensor_param.global_shape.numel(),
-            shard_range=dtensor_param.shard_range,
-            before_gathered=True,
-            after_gathered=False,
-        )
+        # logger.log_transition(
+        #     event_name="reduce_scatter",
+        #     param_name=f"{dtensor_param.name}.grad",
+        #     total_elements=dtensor_param.global_shape.numel(),
+        #     shard_range=dtensor_param.shard_range,
+        #     before_gathered=True,
+        #     after_gathered=False,
+        # )
 
         # 1. Wrap un-reduced full gradient as Partial() across the process group
         # Partial() in DTensor.from_local() will force DTensor to communicate gradients
@@ -164,9 +157,15 @@ class FSDPAllGatherFunction(torch.autograd.Function):
         world_size = device_mesh.size()
         sharded_grad = sharded_grad / world_size
 
-        # Update global memory accounting
-        memory_tracker.untrack_gradient(grad_output)
-        memory_tracker.track_gradient(sharded_grad)
+        logger.log_transition(
+            event_name="reduce_scatter",
+            param_name=f"{dtensor_param.name}.grad",
+            total_elements=dtensor_param.global_shape.numel(),
+            shard_range=dtensor_param.shard_range,
+            before_gathered=True,
+            after_gathered=False,
+            shape=f"{tuple(grad_output.shape)} -> {tuple(sharded_grad.shape)}",
+        )
 
         # PyTorch autograd routes sharded_grad directly to local_param.grad
         return sharded_grad, None
