@@ -92,6 +92,7 @@ class RankLogger:
         shard_range: tuple[int, int],
         before_gathered: bool,
         after_gathered: bool,
+        shape: str | None = None,
     ) -> None:
         before_bar = ASCIIVisualizer.render_shard_bar(
             total_elements=total_elements,
@@ -120,7 +121,7 @@ class RankLogger:
         current_prefix = self._extract_layer_prefix(param_name)
 
         if self.last_layer_prefix is None or current_prefix != self.last_layer_prefix:
-            self.log_rank0(f"\n {' ' * 46} {'-' * 5} {current_prefix} {'-' * 5} {' ' * 30}\n")
+            self.log_rank0(f"\n {' ' * 51} {'-' * 5} {current_prefix} {'-' * 5}\n")
 
         # if self.last_layer_prefix is not None and current_prefix != self.last_layer_prefix:
         #     # self.log_ordered("\n")  # Emits empty line
@@ -129,10 +130,10 @@ class RankLogger:
         self.last_layer_prefix = current_prefix
 
         msg = (  # ruff: ignore[unused-variable]
-            # f"{'·' * 104}\n"
-            f"{'-' * 104}\n"
+            f"{'-' * 125}\n"
             f"Rank {self.rank} | {param_name:<20} | {event_name:<15} | "
-            f"State: {before_bar} -> {after_bar}\n"
+            f"State: {before_bar} -> {after_bar}"
+            f" | Shape: {shape}\n"
         )
         # msg = f"Rank {self.rank:<2} | {param_name:<20} | {event_name:<12} | {before_bar} -> {after_bar}"
         self.log_ordered(msg, format_log=False)

@@ -82,16 +82,6 @@ class FSDPAllGatherFunction(torch.autograd.Function):
         ctx.dtensor_param = dtensor_param
         device_mesh = dtensor_param.device_mesh
 
-        # Log parameter transition from Sharded to Gathered state
-        logger.log_transition(
-            event_name="all_gather",
-            param_name=dtensor_param.name,
-            total_elements=dtensor_param.global_shape.numel(),
-            shard_range=dtensor_param.shard_range,
-            before_gathered=False,
-            after_gathered=True,
-        )
-
         # 1. Wrap rank-local parameter shard as a DTensor sharded along dimension 0
         sharded_dtensor = DTensor.from_local(
             local_param,
@@ -106,7 +96,20 @@ class FSDPAllGatherFunction(torch.autograd.Function):
         )
 
         # Return unwrapped raw PyTorch tensor to be set on module attribute
-        return replicated_dtensor.to_local()
+        result = replicated_dtensor.to_local()
+
+        # Log parameter transition from Sharded to Gathered state
+        logger.log_transition(
+            event_name="all_gather",
+            param_name=dtensor_param.name,
+            total_elements=dtensor_param.global_shape.numel(),
+            shard_range=dtensor_param.shard_range,
+            before_gathered=False,
+            after_gathered=True,
+            shape=f"{tuple(local_param.shape)} -> {tuple(result.shape)}",
+        )
+
+        return result
 
     @staticmethod
     def backward(ctx: Any, grad_output: torch.Tensor) -> tuple[torch.Tensor | None, None]:
@@ -126,15 +129,6 @@ class FSDPAllGatherFunction(torch.autograd.Function):
         """
         dtensor_param: "DTensorShardedParameter" = ctx.dtensor_param
         device_mesh = dtensor_param.device_mesh
-
-        # logger.log_transition(
-        #     event_name="reduce_scatter",
-        #     param_name=f"{dtensor_param.name}.grad",
-        #     total_elements=dtensor_param.global_shape.numel(),
-        #     shard_range=dtensor_param.shard_range,
-        #     before_gathered=True,
-        #     after_gathered=False,
-        # )
 
         # 1. Wrap un-reduced full gradient as Partial() across the process group
         # Partial() in DTensor.from_local() will force DTensor to communicate gradients
@@ -198,6 +192,10 @@ class ForwardPostHook:
 
     def __call__(self, module: nn.Module, args: tuple[Any, ...], output: Any) -> None:
         """Restores module attribute back to local shard to release peak RAM."""
+        before_shape = getattr(self.dtensor_param.module, self.dtensor_param.parameter_name).shape
+        self.dtensor_param.free()
+        # TODO: that produces correct numbers, but the way it's calculated isn't correct
+        after_shape = self.dtensor_param.local_param.to_local().shape
         logger.log_transition(
             event_name="free",
             param_name=self.dtensor_param.name,
@@ -205,8 +203,8 @@ class ForwardPostHook:
             shard_range=self.dtensor_param.shard_range,
             before_gathered=True,
             after_gathered=False,
+            shape=f"{tuple(before_shape)} -> {tuple(after_shape)}",
         )
-        self.dtensor_param.free()
 
 
 class BackwardPreHook:

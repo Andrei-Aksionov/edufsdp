@@ -40,14 +40,14 @@ def main() -> None:
     targets = torch.randn(2, 4)
 
     for _ in range(1):
-        logger.log_rank0(f"\n {'=' * 50} Forward pass {'=' * 50}\n")
+        logger.log_rank0(f"\n\n {'=' * 55} Forward pass {'=' * 55}\n")
 
         outputs = fsdp_model(inputs)
         loss = criterion(outputs, targets)
         # logger.log_ordered(f"Loss value: {loss.item():.4f}")
 
         optimizer.zero_grad()
-        logger.log_rank0(f"\n {'=' * 50} Backward pass {'=' * 50}\n")
+        logger.log_rank0(f"\n\n {'=' * 55} Backward pass {'=' * 55}\n")
         logger.reset_step()
         loss.backward()
 
