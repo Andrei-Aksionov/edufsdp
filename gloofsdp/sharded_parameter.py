@@ -52,10 +52,7 @@ class DTensorShardedParameter:
         with torch.no_grad():
             temp_dtensor = distribute_tensor(param.data, device_mesh=self.device_mesh, placements=[Shard(dim=0)])
             # Create leaf parameter managed directly by the optimizer
-            # self.local_param = nn.Parameter(
-            #     temp_dtensor.to_local().clone(),
-            #     requires_grad=param.requires_grad,
-            # )
+            # TODO: bad naming - have to always call .to_local() on a var that is called local_param
             self.local_param = nn.Parameter(
                 temp_dtensor,
                 requires_grad=param.requires_grad,

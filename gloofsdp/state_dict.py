@@ -3,15 +3,7 @@ from typing import Any, Dict
 
 import torch
 import torch.distributed as dist
-
-# Native DTensor imports (used if available)
-# TODO (andrei aksionau): seems like it's not needed
-try:
-    from torch.distributed.tensor import Shard, distribute_tensor
-
-    HAS_DTENSOR = True
-except ImportError:
-    HAS_DTENSOR = False
+from torch.distributed.tensor import Shard, distribute_tensor
 
 
 class StateDictType(Enum):
@@ -108,6 +100,6 @@ class StateDictHandler:
                     rank_chunk = chunks[rank]
 
                     # Fix shape mismatch: Reshape 1D flat chunk to match 2D/nD local_param shape
-                    reshaped_chunk = rank_chunk.view(param.local_param.shape)
-                    param.local_param.data.copy_(reshaped_chunk)
+                    reshaped_chunk = rank_chunk.view(param.local_param.to_local().shape)
+                    param.local_param.to_local().data.copy_(reshaped_chunk)
                     param.free()
