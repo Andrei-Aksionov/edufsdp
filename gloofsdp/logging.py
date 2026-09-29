@@ -11,14 +11,20 @@ class RankLogger:
         # torchrun sets these env vars automatically
         self.rank = int(os.environ.get("RANK", 0))
         self.world_size = int(os.environ.get("WORLD_SIZE", 1))
+        self.last_layer_prefix: str | None = None
 
     def log(self, msg: str) -> None:
+        # TODO: why do we need to flush?
         print(self.format_log(msg), flush=True)
+
+    def log_rank0(self, msg: str) -> None:
+        if self.rank == 0:
+            print(msg, flush=True)
 
     def format_log(self, msg: str) -> str:
         return f"[Rank {self.rank}/{self.world_size}] {msg}"
 
-    def log_ordered(self, msg: str) -> None:
+    def log_ordered(self, msg: str, format_log: bool = True) -> None:
         """
         Guarantees sequentially ordered stdout across all ranks by passing
         a token through process barriers.
@@ -30,7 +36,7 @@ class RankLogger:
 
         for rank in range(self.world_size):
             if self.rank == rank and msg.strip():
-                formatted = "\n".join(self.format_log(line) for line in msg.splitlines())
+                formatted = "\n".join(self.format_log(line) if format_log else line for line in msg.splitlines())
                 print(formatted, flush=True)
 
             # ALL ranks hit this barrier on EVERY iteration of the loop
@@ -50,7 +56,7 @@ class RankLogger:
             f"    -> Active Tensor Shape: {list(full_tensor.shape if full_tensor is not None else local_tensor.shape)}\n"
             f"    -> {status} (Total simulated global elements: {full_elements if full_elements else local_elements * self.world_size})"
         )
-        # self.log(msg)
+        self.log(msg)
 
     def log_gradient_state(
         self, stage: str, param_name: str, full_grad: torch.Tensor | None, local_grad: torch.Tensor | None
@@ -64,7 +70,19 @@ class RankLogger:
             f"    -> Local Gradient Shard Elements: {local_elements}\n"
             f"    -> Status: {'REDUCE_SCATTERED TO LOCAL SHARD' if local_grad is not None else 'FULL GRADIENT COMPUTED'}"
         )
-        # self.log(msg)
+        self.log(msg)
+
+    def _extract_layer_prefix(self, param_name: str) -> str:
+        """
+        Extracts top-level or submodule layer prefix from parameter name.
+        Example: 'layer1.weight' -> 'layer1', 'encoder.layer.0.bias' -> 'encoder.layer.0'
+        """
+        parts = param_name.split(".")
+        return parts[0] if len(parts) > 1 else param_name
+
+    def reset_step(self) -> None:
+        """Call at the start or end of a training step to reset layer boundary tracking."""
+        self.last_layer_prefix = None
 
     def log_transition(
         self,
@@ -86,19 +104,38 @@ class RankLogger:
             is_gathered=after_gathered,
         )
 
+        # msg = (  # ruff: ignore[unused-variable]
+        #     f"\n"
+        #     f"====================================================\n"
+        #     f"Rank {self.rank} | {event_name} | {param_name}\n"
+        #     f"====================================================\n"
+        #     f"State: {before_bar}\n"
+        #     f"       ↓\n"
+        #     f"Op:    {event_name}\n"
+        #     f"       ↓\n"
+        #     f"State: {after_bar}\n"
+        #     f"====================================================\n"
+        # )
+
+        current_prefix = self._extract_layer_prefix(param_name)
+
+        if self.last_layer_prefix is None or current_prefix != self.last_layer_prefix:
+            self.log_rank0(f"\n {' ' * 46} {'-' * 5} {current_prefix} {'-' * 5} {' ' * 30}\n")
+
+        # if self.last_layer_prefix is not None and current_prefix != self.last_layer_prefix:
+        #     # self.log_ordered("\n")  # Emits empty line
+        #     # self.log_rank0(f"{'-' * 104}\n")
+        #     self.log_rank0("\n")
+        self.last_layer_prefix = current_prefix
+
         msg = (  # ruff: ignore[unused-variable]
-            f"\n"
-            f"====================================================\n"
-            f"Rank {self.rank} | {event_name} | {param_name}\n"
-            f"====================================================\n"
-            f"State: {before_bar}\n"
-            f"       ↓\n"
-            f"Op:    {event_name}\n"
-            f"       ↓\n"
-            f"State: {after_bar}\n"
-            f"====================================================\n"
+            # f"{'·' * 104}\n"
+            f"{'-' * 104}\n"
+            f"Rank {self.rank} | {param_name:<20} | {event_name:<15} | "
+            f"State: {before_bar} -> {after_bar}\n"
         )
-        # self.log_ordered(msg)
+        # msg = f"Rank {self.rank:<2} | {param_name:<20} | {event_name:<12} | {before_bar} -> {after_bar}"
+        self.log_ordered(msg, format_log=False)
 
 
 logger = RankLogger()

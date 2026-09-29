@@ -36,19 +36,23 @@ def main() -> None:
     optimizer = torch.optim.Adam(fsdp_model.parameters(), lr=0.1)
     criterion = nn.MSELoss()
 
-    inputs = torch.randn(2, 8)
+    inputs = torch.randn(2, 8, requires_grad=True)
     targets = torch.randn(2, 4)
 
-    for _ in range(3):
+    for _ in range(1):
+        logger.log_rank0(f"\n {'=' * 50} Forward pass {'=' * 50}\n")
         # logger.log_ordered("=== MEMORY SUMMARY BEFORE FORWARD ===\n" + memory_tracker.get_summary())
+        # logger.log_ordered("=== MEMORY SUMMARY BEFORE FORWARD ===\n")
 
         outputs = fsdp_model(inputs)
         loss = criterion(outputs, targets)
-        logger.log_ordered(f"Loss value: {loss.item():.4f}")
+        # logger.log_ordered(f"Loss value: {loss.item():.4f}")
 
         # logger.log_ordered("=== MEMORY SUMMARY AFTER FORWARD ===\n" + memory_tracker.get_summary())
 
         optimizer.zero_grad()
+        logger.log_rank0(f"\n {'=' * 50} Backward pass {'=' * 50}\n")
+        logger.reset_step()
         loss.backward()
 
         # for name, sp in fsdp_model.sharded_params.items():
@@ -60,7 +64,7 @@ def main() -> None:
 
         optimizer.step()
 
-    check_sd_loading(fsdp_model, mesh)
+    # check_sd_loading(fsdp_model, mesh)
 
     dist.destroy_process_group()
 

@@ -136,7 +136,7 @@ class FSDPAllGatherFunction(torch.autograd.Function):
 
         logger.log_transition(
             event_name="reduce_scatter",
-            param_name=f"grad({dtensor_param.name})",
+            param_name=f"{dtensor_param.name}.grad",
             total_elements=dtensor_param.global_shape.numel(),
             shard_range=dtensor_param.shard_range,
             before_gathered=True,

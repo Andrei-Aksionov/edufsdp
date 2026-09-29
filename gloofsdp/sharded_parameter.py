@@ -60,7 +60,7 @@ class DTensorShardedParameter:
 
         # 2. Track element ranges for logging and visual profiling
         # local_param is ALREADY sharded, so local_param.numel() is local shard size
-        self.shard_size = self.local_param.numel()
+        self.shard_size = self.local_param.to_local().numel()
         start_idx = self.device_mesh.get_rank() * self.shard_size
         end_idx = start_idx + self.shard_size
         self.shard_range = (start_idx, end_idx)
