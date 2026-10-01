@@ -44,7 +44,9 @@ def main() -> None:
 
         outputs = fsdp_model(inputs)
         loss = criterion(outputs, targets)
-        # logger.log_ordered(f"Loss value: {loss.item():.4f}")
+        logger.log_rank0("\n\n######## LOSS VALUES: ########\n")
+        logger.log_ordered(f"Loss value: {loss.item():.4f}")
+        logger.log_rank0(f"\n{'#' * 30}")
 
         optimizer.zero_grad()
         logger.log_rank0(f"\n\n {'=' * 55} Backward pass {'=' * 55}\n")

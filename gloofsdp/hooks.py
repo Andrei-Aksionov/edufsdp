@@ -192,10 +192,9 @@ class ForwardPostHook:
 
     def __call__(self, module: nn.Module, args: tuple[Any, ...], output: Any) -> None:
         """Restores module attribute back to local shard to release peak RAM."""
-        before_shape = getattr(self.dtensor_param.module, self.dtensor_param.parameter_name).shape
+        before_shape = self.dtensor_param.shape
         self.dtensor_param.free()
-        # TODO: that produces correct numbers, but the way it's calculated isn't correct
-        after_shape = self.dtensor_param.local_param.to_local().shape
+        after_shape = self.dtensor_param.shape
         logger.log_transition(
             event_name="free",
             param_name=self.dtensor_param.name,
@@ -227,4 +226,15 @@ class BackwardPostHook:
 
     def __call__(self, module: nn.Module, grad_input: tuple, grad_output: tuple) -> None:
         # Reshard weight data back to resting local shape
+        before_shape = self.sharded_param.shape
         self.sharded_param.free()
+        after_shape = self.sharded_param.shape
+        logger.log_transition(
+            event_name="free",
+            param_name=self.sharded_param.name,
+            total_elements=self.sharded_param.global_shape.numel(),
+            shard_range=self.sharded_param.shard_range,
+            before_gathered=True,
+            after_gathered=False,
+            shape=f"{tuple(before_shape)} -> {tuple(after_shape)}",
+        )

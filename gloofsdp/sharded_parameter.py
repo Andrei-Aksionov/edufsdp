@@ -47,25 +47,36 @@ class DTensorShardedParameter:
         self.device_mesh = device_mesh
         self.global_shape = param.shape
 
-        # 1. Shard original parameter along dimension 0 across the device mesh
+        # 1. Convert initial tensor to DTensor and wrap as a leaf nn.Parameter
         with torch.no_grad():
-            temp_dtensor = distribute_tensor(param.data, device_mesh=self.device_mesh, placements=[Shard(dim=0)])
-            # Create leaf parameter managed directly by the optimizer
-            # TODO: bad naming - have to always call .to_local() on a var that is called local_param
-            self.local_param = nn.Parameter(
-                temp_dtensor,
+            sharded_dtensor = distribute_tensor(param.data, device_mesh=self.device_mesh, placements=[Shard(dim=0)])
+            # This parameter stays persistently assigned to self.module
+            self.sharded_param = nn.Parameter(
+                sharded_dtensor,
                 requires_grad=param.requires_grad,
             )
 
-        # 2. Track element ranges for logging and visual profiling
-        # local_param is ALREADY sharded, so local_param.numel() is local shard size
-        self.shard_size = self.local_param.to_local().numel()
+        # 2. Mount the DTensor Parameter directly on the target module attribute
+        setattr(self.module, self.parameter_name, self.sharded_param)
+
+        # 3. Local storage metadata
+        self.shard_size = self.sharded_param.to_local().numel()
         start_idx = self.device_mesh.get_rank() * self.shard_size
         end_idx = start_idx + self.shard_size
         self.shard_range = (start_idx, end_idx)
 
-        # 3. Immediately set module attribute to initial local shard
-        self.free()
+        # Handle temporary storage during forward/backward execution
+        self._full_tensor: torch.Tensor | None = None
+
+    @property
+    def is_gathered(self) -> bool:
+        return self._full_tensor is not None
+
+    @property
+    def shape(self) -> torch.Size:
+        if self.is_gathered:
+            return self._full_tensor.shape
+        return self.sharded_param.to_local().shape
 
     def gather(self) -> torch.Tensor:
         """
@@ -78,26 +89,31 @@ class DTensorShardedParameter:
             torch.Tensor: Unwrapped full parameter tensor attached to the module.
         """
 
-        if self.local_param.requires_grad and torch.is_grad_enabled():
-            # Apply custom autograd function to register node in autograd graph
-            full_tensor = FSDPAllGatherFunction.apply(self.local_param.to_local(), self)
-        else:
-            # Inference/no-grad evaluation path
-            with torch.no_grad():
-                full_tensor = FSDPAllGatherFunction.apply(self.local_param.to_local(), self)
+        if self.is_gathered:
+            return self._full_tensor
 
-        # Assign reconstructed tensor onto module attribute for forward computation
-        self._set_on_module(full_tensor)
+        # Get local storage tensor for collective operation
+        local_shard = self.sharded_param.to_local()
+
+        if self.sharded_param.requires_grad and torch.is_grad_enabled():
+            full_tensor = FSDPAllGatherFunction.apply(local_shard, self)
+        else:
+            with torch.no_grad():
+                full_tensor = FSDPAllGatherFunction.apply(local_shard, self)
+
+        self._full_tensor = full_tensor
+
+        # Temporarily replace the module attribute with the gathered full tensor
+        # so F.linear receives regular torch.Tensors for both input and weight
+        # Bypasses Module.__setattr__ check so PyTorch allows plain Tensor
+        self.module.__dict__[self.parameter_name] = full_tensor
+
         return full_tensor
 
     def free(self) -> None:
         """
         Restores module attribute back to local shard, allowing garbage collection of full tensor.
         """
-        self._set_on_module(self.local_param)
-
-    def _set_on_module(self, tensor: torch.Tensor) -> None:
-        """Helper method to update module attribute without parameter collision errors."""
-        if hasattr(self.module, self.parameter_name):
-            delattr(self.module, self.parameter_name)
-        setattr(self.module, self.parameter_name, tensor)
+        # Restore the sharded DTensor Parameter back on the module
+        self.module.__dict__[self.parameter_name] = self.sharded_param
+        self._full_tensor = None
