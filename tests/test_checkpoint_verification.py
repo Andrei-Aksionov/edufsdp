@@ -55,7 +55,7 @@ def test_state_dict_compatibility():
     # TEST A: FULL State Dict Parity (EducationalFSDP vs Native FSDP)
     # ------------------------------------------------------------------
     # Get Full State Dict from Educational FSDP (All-Gathers parameters into global shapes)
-    edu_full_state_dict = edu_model.state_dict(EDUStateDictType.FULL)
+    edu_full_state_dict = edu_model.state_dict(state_dict_type=EDUStateDictType.FULL)
 
     # Get Full State Dict from Native PyTorch FSDP
     with NativeFSDP.state_dict_type(native_model, StateDictType.FULL_STATE_DICT):

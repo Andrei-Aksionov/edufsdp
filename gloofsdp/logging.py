@@ -13,13 +13,15 @@ class RankLogger:
         self.world_size = int(os.environ.get("WORLD_SIZE", 1))
         self.last_layer_prefix: str | None = None
 
+        self.log_hooks = True
+
     def log(self, msg: str) -> None:
         # TODO: why do we need to flush?
-        print(self.format_log(msg), flush=True)
+        print(self.format_log(msg), flush=False)
 
     def log_rank0(self, msg: str) -> None:
         if self.rank == 0:
-            print(msg, flush=True)
+            print(msg, flush=False)
 
     def format_log(self, msg: str) -> str:
         return f"[Rank {self.rank}/{self.world_size}] {msg}"
@@ -37,7 +39,7 @@ class RankLogger:
         for rank in range(self.world_size):
             if self.rank == rank and msg.strip():
                 formatted = "\n".join(self.format_log(line) if format_log else line for line in msg.splitlines())
-                print(formatted, flush=True)
+                print(formatted, flush=False)
 
             # ALL ranks hit this barrier on EVERY iteration of the loop
             dist.barrier()
@@ -94,6 +96,9 @@ class RankLogger:
         after_gathered: bool,
         shape: str | None = None,
     ) -> None:
+        if not self.log_hooks:
+            return
+
         before_bar = ASCIIVisualizer.render_shard_bar(
             total_elements=total_elements,
             active_range=shard_range,

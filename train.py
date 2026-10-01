@@ -55,7 +55,8 @@ def main() -> None:
 
         optimizer.step()
 
-    # check_sd_loading(fsdp_model, mesh)
+    logger.log_hooks = False
+    check_sd_loading(fsdp_model, mesh)
 
     dist.destroy_process_group()
 
@@ -64,14 +65,13 @@ def check_sd_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) -> None:
 
     # 1. Test Local State Dict
     local_sd = fsdp_model.state_dict(state_dict_type=StateDictType.LOCAL)
-    logger.log_ordered("=== LOCAL STATE DICT ===\n" + "\n".join([f"{k}: shape {v.shape}" for k, v in local_sd.items()]))
+    logger.log_rank0("=== LOCAL STATE DICT ===\n" + "\n".join([f"{k}: shape {v.shape}" for k, v in local_sd.items()]))
 
     # 2. Test Full State Dict
     full_sd = fsdp_model.state_dict(state_dict_type=StateDictType.FULL)
-    if dist.get_rank() == 0:
-        logger.log(
-            "=== FULL STATE DICT (Rank 0) ===\n" + "\n".join([f"{k}: shape {v.shape}" for k, v in full_sd.items()])
-        )
+    logger.log_rank0(
+        "=== FULL STATE DICT (Rank 0) ===\n" + "\n".join([f"{k}: shape {v.shape}" for k, v in full_sd.items()])
+    )
 
     # Verify reloading full state dict onto a fresh model instance
     fresh_fsdp_model = EducationalFSDP(MLP(), device_mesh=device_mesh)

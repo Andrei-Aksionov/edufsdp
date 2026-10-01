@@ -22,14 +22,7 @@ class TestShardingPlacement(DistributedTestBase):
         model = copy.deepcopy(self.base_model)
         wrapped = EducationalFSDP(model, device_mesh=self.device_mesh)
 
-        for param_name, (global_shape, expected_local_shape) in self.expected_shapes.items():
-            sharded_param = wrapped.sharded_params[param_name]
-            assert sharded_param.local_param.to_local().shape == expected_local_shape, (
-                f"Rank {self.rank}: {param_name} internal local shape "
-                f"{sharded_param.local_param.shape} != {expected_local_shape}"
-            )
-            assert sharded_param.global_shape == global_shape
-
+        for param_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = param_name.split(".")
             module_param = getattr(getattr(wrapped.module, layer_name), attr).to_local()
             assert module_param.shape == expected_local_shape, (

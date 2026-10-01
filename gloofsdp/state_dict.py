@@ -1,105 +1,77 @@
-from enum import Enum, auto
-from typing import Any, Dict
+from enum import Enum
+from typing import Dict
 
 import torch
-import torch.distributed as dist
 from torch.distributed.tensor import Shard, distribute_tensor
+
+from gloofsdp.sharded_parameter import DTensorShardedParameter
 
 
 class StateDictType(Enum):
-    LOCAL = auto()
-    FULL = auto()
+    LOCAL = "local"
+    FULL = "full"
 
 
 class StateDictHandler:
+    """
+    Manages exporting and loading model state dictionaries in LOCAL or FULL formats.
+    """
+
     @staticmethod
     def get_state_dict(
-        sharded_params: Dict[str, Any],
-        state_dict_type: StateDictType = StateDictType.LOCAL,
+        sharded_params: Dict[str, DTensorShardedParameter],
+        state_dict_type: StateDictType,
     ) -> Dict[str, torch.Tensor]:
-        """
-        Retrieves the state dict in either LOCAL or FULL format.
-        """
-        state_dict: Dict[str, torch.Tensor] = {}
+        result = {}
 
-        if state_dict_type == StateDictType.LOCAL:
-            for name, param in sharded_params.items():
-                if hasattr(param, "dtensor"):
-                    # DTensor version: extract local shard
-                    state_dict[name] = param.dtensor.to_local().data.clone()
-                else:
-                    # Manual ShardedParameter version
-                    state_dict[name] = param.local_param.data.clone()
+        for name, param_wrapper in sharded_params.items():
+            if state_dict_type == StateDictType.LOCAL:
+                # Export rank-local shard tensor
+                result[name] = param_wrapper.sharded_param.to_local().detach().cpu()
 
-        elif state_dict_type == StateDictType.FULL:
-            for name, param in sharded_params.items():
-                # Both parameter types implement .gather() and .free()
-                gathered_tensor = param.gather().data.clone()
+            elif state_dict_type == StateDictType.FULL:
+                # 1. Ensure the full tensor is gathered across all ranks
+                full_tensor = param_wrapper.gather()
 
-                if dist.get_rank() == 0:
-                    state_dict[name] = gathered_tensor
+                # 2. Detach and move to CPU so all ranks capture a valid unified tensor copy
+                result[name] = full_tensor.detach().cpu()
 
-                param.free()
+                # 3. Release memory if it wasn't already active
+                param_wrapper.free()
 
-        return state_dict
+        return result
 
     @staticmethod
     def load_state_dict(
-        sharded_params: Dict[str, Any],
+        sharded_params: Dict[str, DTensorShardedParameter],
         state_dict: Dict[str, torch.Tensor],
-        state_dict_type: StateDictType = StateDictType.LOCAL,
+        state_dict_type: StateDictType,
     ) -> None:
-        """
-        Loads a state dict back into either ShardedParameter or DTensorShardedParameter.
-        """
-        rank = dist.get_rank()
-        world_size = dist.get_world_size()
+        for name, param_wrapper in sharded_params.items():
+            if name not in state_dict:
+                raise KeyError(f"Parameter '{name}' not found in provided state dict.")
 
-        if state_dict_type == StateDictType.LOCAL:
-            for name, param in sharded_params.items():
-                if name in state_dict:
-                    if hasattr(param, "dtensor"):
-                        # DTensor target
-                        param.dtensor.to_local().data.copy_(state_dict[name])
-                    else:
-                        # Manual target
-                        param.local_param.data.copy_(state_dict[name])
+            incoming_tensor = state_dict[name]
 
-        elif state_dict_type == StateDictType.FULL:
-            for name, param in sharded_params.items():
-                # 1. Prepare global tensor buffer across all ranks
-                if rank == 0:
-                    if name not in state_dict:
-                        raise KeyError(f"Missing key '{name}' in full state dict provided to Rank 0.")
-                    full_tensor = state_dict[name].clone()
-                else:
-                    full_tensor = torch.empty(param.global_shape)
+            if state_dict_type == StateDictType.LOCAL:
+                # Assign incoming local shard tensor directly
+                with torch.no_grad():
+                    local_shard = param_wrapper.sharded_param.to_local()
+                    local_shard.copy_(incoming_tensor.to(local_shard.device))
 
-                # 2. Broadcast full tensor from Rank 0 to all other ranks
-                dist.broadcast(full_tensor, src=0)
+            elif state_dict_type == StateDictType.FULL:
+                # Incoming tensor is the global full-size tensor.
+                # We need to slice/shard it appropriately for the current rank.
+                device_mesh = param_wrapper.device_mesh
 
-                # 3. Branching based on implementation class:
-                if hasattr(param, "dtensor"):
-                    # --- DTensor Path ---
-                    # DTensor handles its own sharding across the DeviceMesh
-                    new_dtensor = distribute_tensor(
-                        full_tensor, device_mesh=param.device_mesh, placements=[Shard(dim=0)]
+                with torch.no_grad():
+                    # Distribute the global tensor to get the correct rank-local shard
+                    sharded_dtensor = distribute_tensor(
+                        incoming_tensor.to(param_wrapper.sharded_param.device),
+                        device_mesh=device_mesh,
+                        placements=[Shard(dim=0)],
                     )
-                    param.dtensor = new_dtensor
-                    param.free()
 
-                else:
-                    # --- Manual ShardedParameter Path ---
-                    flat_param = full_tensor.flatten()
-
-                    padding_needed = getattr(param, "padding_needed", 0)
-                    if padding_needed > 0:
-                        flat_param = torch.cat([flat_param, torch.zeros(padding_needed)])
-
-                    chunks = torch.chunk(flat_param, world_size)
-                    rank_chunk = chunks[rank]
-
-                    # Fix shape mismatch: Reshape 1D flat chunk to match 2D/nD local_param shape
-                    reshaped_chunk = rank_chunk.view(param.local_param.to_local().shape)
-                    param.local_param.to_local().data.copy_(reshaped_chunk)
-                    param.free()
+                    # Copy data into the existing parameter buffer
+                    local_shard = param_wrapper.sharded_param.to_local()
+                    local_shard.copy_(sharded_dtensor.to_local())
