@@ -1,6 +1,5 @@
 import os
 
-import torch
 import torch.distributed as dist
 
 from gloofsdp.visualizer import ASCIIVisualizer
@@ -41,38 +40,7 @@ class RankLogger:
                 formatted = "\n".join(self.format_log(line) if format_log else line for line in msg.splitlines())
                 print(formatted, flush=False)
 
-            # ALL ranks hit this barrier on EVERY iteration of the loop
             dist.barrier()
-
-    def log_parameter_state(
-        self, stage: str, param_name: str, local_tensor: torch.Tensor, full_tensor: torch.Tensor | None = None
-    ) -> None:
-        local_elements = local_tensor.numel() if local_tensor is not None else 0
-        full_elements = full_tensor.numel() if full_tensor is not None else 0
-
-        status = f"Status: {'GATHERED' if full_tensor is not None else 'SHARDED'}"
-
-        msg = (  # ruff: ignore[unused-variable]
-            f"--- {stage} | Parameter: {param_name} ---\n"
-            f"    -> Local Shard Shape: {list(local_tensor.shape)} ({local_elements} elements)\n"
-            f"    -> Active Tensor Shape: {list(full_tensor.shape if full_tensor is not None else local_tensor.shape)}\n"
-            f"    -> {status} (Total simulated global elements: {full_elements if full_elements else local_elements * self.world_size})"
-        )
-        self.log(msg)
-
-    def log_gradient_state(
-        self, stage: str, param_name: str, full_grad: torch.Tensor | None, local_grad: torch.Tensor | None
-    ) -> None:
-        full_elements: int = full_grad.numel() if full_grad is not None else 0
-        local_elements: int = local_grad.numel() if local_grad is not None else 0
-
-        msg: str = (  # ruff: ignore[unused-variable]
-            f"--- {stage} | Gradient: {param_name} ---\n"
-            f"    -> Full Gradient Elements: {full_elements}\n"
-            f"    -> Local Gradient Shard Elements: {local_elements}\n"
-            f"    -> Status: {'REDUCE_SCATTERED TO LOCAL SHARD' if local_grad is not None else 'FULL GRADIENT COMPUTED'}"
-        )
-        self.log(msg)
 
     def _extract_layer_prefix(self, param_name: str) -> str:
         """
@@ -110,37 +78,19 @@ class RankLogger:
             is_gathered=after_gathered,
         )
 
-        # msg = (  # ruff: ignore[unused-variable]
-        #     f"\n"
-        #     f"====================================================\n"
-        #     f"Rank {self.rank} | {event_name} | {param_name}\n"
-        #     f"====================================================\n"
-        #     f"State: {before_bar}\n"
-        #     f"       ↓\n"
-        #     f"Op:    {event_name}\n"
-        #     f"       ↓\n"
-        #     f"State: {after_bar}\n"
-        #     f"====================================================\n"
-        # )
-
         current_prefix = self._extract_layer_prefix(param_name)
 
         if self.last_layer_prefix is None or current_prefix != self.last_layer_prefix:
             self.log_rank0(f"\n {' ' * 51} {'-' * 5} {current_prefix} {'-' * 5}\n")
 
-        # if self.last_layer_prefix is not None and current_prefix != self.last_layer_prefix:
-        #     # self.log_ordered("\n")  # Emits empty line
-        #     # self.log_rank0(f"{'-' * 104}\n")
-        #     self.log_rank0("\n")
         self.last_layer_prefix = current_prefix
 
-        msg = (  # ruff: ignore[unused-variable]
+        msg = (
             f"{'-' * 125}\n"
             f"Rank {self.rank} | {param_name:<20} | {event_name:<15} | "
             f"State: {before_bar} -> {after_bar}"
             f" | Shape: {shape}\n"
         )
-        # msg = f"Rank {self.rank:<2} | {param_name:<20} | {event_name:<12} | {before_bar} -> {after_bar}"
         self.log_ordered(msg, format_log=False)
 
 
