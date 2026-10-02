@@ -20,10 +20,27 @@ class StateDictManager:
     """Manages state dict extraction and restoration for sharded models."""
 
     @staticmethod
+    def _get_sharded_param_map(module: nn.Module) -> Dict[str, ShardedParameter]:
+        """
+        Dynamically collects all DTensorShardedParameter objects across
+        submodules by searching through module attributes.
+        """
+        sharded_map: Dict[str, ShardedParameter] = {}
+
+        for mod_name, submodule in module.named_modules():
+            # Check if this submodule holds any registered sharded parameter objects
+            if hasattr(submodule, "_fsdp_sharded_params"):
+                for p_name, param_wrapper in submodule._fsdp_sharded_params.items():
+                    # Construct fully qualified parameter name (e.g., 'layer1.weight')
+                    full_name = f"{mod_name}.{p_name}" if mod_name else p_name
+                    sharded_map[full_name] = param_wrapper
+
+        return sharded_map
+
+    @staticmethod
     @torch.no_grad()
     def get_state_dict(
         module: nn.Module,
-        sharded_params: dict[str, ShardedParameter],
         state_dict_type: StateDictType,
     ) -> dict[str, torch.Tensor]:
         """
@@ -37,6 +54,7 @@ class StateDictManager:
             dict[str, torch.Tensor]: State dict mapping names to full or local tensors.
         """
         state_dict: dict[str, torch.Tensor] = {}
+        sharded_params = StateDictManager._get_sharded_param_map(module)
 
         for name, param in module.named_parameters():
             if name not in sharded_params:
@@ -57,12 +75,12 @@ class StateDictManager:
     @torch.no_grad()
     def load_state_dict(
         module: nn.Module,
-        sharded_params: Dict[str, ShardedParameter],
         state_dict: Dict[str, torch.Tensor],
         state_dict_type: StateDictType,
     ) -> None:
 
         module_keys = dict(module.named_parameters())
+        sharded_params = StateDictManager._get_sharded_param_map(module)
 
         for name, incoming_tensor in state_dict.items():
             if name not in module_keys:

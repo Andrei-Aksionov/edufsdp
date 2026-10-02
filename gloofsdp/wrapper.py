@@ -63,23 +63,6 @@ class EducationalFSDP(nn.Module):
         """Delegates forward pass execution to wrapped inner module."""
         return self.module(*args, **kwargs)
 
-    def _get_sharded_param_map(self) -> Dict[str, ShardedParameter]:
-        """
-        Dynamically collects all DTensorShardedParameter objects across
-        submodules by searching through module attributes.
-        """
-        sharded_map: Dict[str, ShardedParameter] = {}
-
-        for mod_name, submodule in self.module.named_modules():
-            # Check if this submodule holds any registered sharded parameter objects
-            if hasattr(submodule, "_fsdp_sharded_params"):
-                for p_name, param_wrapper in submodule._fsdp_sharded_params.items():
-                    # Construct fully qualified parameter name (e.g., 'layer1.weight')
-                    full_name = f"{mod_name}.{p_name}" if mod_name else p_name
-                    sharded_map[full_name] = param_wrapper
-
-        return sharded_map
-
     def state_dict(
         self,
         state_dict_type: StateDictType = StateDictType.LOCAL,
@@ -87,8 +70,7 @@ class EducationalFSDP(nn.Module):
         """
         Exports the module state dictionary in LOCAL (sharded) or FULL (unsharded) format.
         """
-        sharded_params = self._get_sharded_param_map()
-        return StateDictManager.get_state_dict(self.module, sharded_params, state_dict_type)
+        return StateDictManager.get_state_dict(self.module, state_dict_type)
 
     def load_state_dict(
         self,
@@ -98,5 +80,4 @@ class EducationalFSDP(nn.Module):
         """
         Loads a state dictionary in LOCAL or FULL format into sharded parameter buffers.
         """
-        sharded_params = self._get_sharded_param_map()
-        StateDictManager.load_state_dict(self.module, sharded_params, state_dict, state_dict_type)
+        StateDictManager.load_state_dict(self.module, state_dict, state_dict_type)
