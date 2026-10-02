@@ -6,7 +6,7 @@ from torch import nn
 from torch.distributed.tensor import Shard, distribute_tensor
 
 from gloofsdp.hooks import FSDPAllGatherFunction
-from gloofsdp.sharded_parameter import DTensorShardedParameter
+from gloofsdp.sharded_parameter import ShardedParameter
 
 
 class StateDictType(Enum):
@@ -23,7 +23,7 @@ class StateDictManager:
     @torch.no_grad()
     def get_state_dict(
         module: nn.Module,
-        sharded_params: dict[str, DTensorShardedParameter],
+        sharded_params: dict[str, ShardedParameter],
         state_dict_type: StateDictType,
     ) -> dict[str, torch.Tensor]:
         """
@@ -57,7 +57,7 @@ class StateDictManager:
     @torch.no_grad()
     def load_state_dict(
         module: nn.Module,
-        sharded_params: Dict[str, DTensorShardedParameter],
+        sharded_params: Dict[str, ShardedParameter],
         state_dict: Dict[str, torch.Tensor],
         state_dict_type: StateDictType,
     ) -> None:

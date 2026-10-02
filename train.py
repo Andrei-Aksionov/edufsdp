@@ -39,6 +39,7 @@ def main() -> None:
     inputs = torch.randn(2, 8, requires_grad=True)
     targets = torch.randn(2, 4)
 
+    logger.log_hooks = True
     for _ in range(1):
         logger.log_rank0(f"\n\n {'=' * 55} Forward pass {'=' * 55}\n")
 

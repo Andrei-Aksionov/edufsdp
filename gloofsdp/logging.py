@@ -12,7 +12,7 @@ class RankLogger:
         self.world_size = int(os.environ.get("WORLD_SIZE", 1))
         self.last_layer_prefix: str | None = None
 
-        self.log_hooks = True
+        self.log_hooks = False
 
     def log(self, msg: str) -> None:
         # TODO: why do we need to flush?

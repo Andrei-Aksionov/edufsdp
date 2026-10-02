@@ -12,7 +12,7 @@ import torch.nn as nn
 from torch.distributed.device_mesh import DeviceMesh
 
 from gloofsdp.hooks import BackwardPostHook, BackwardPreHook, ForwardPostHook, ForwardPreHook
-from gloofsdp.sharded_parameter import DTensorShardedParameter
+from gloofsdp.sharded_parameter import ShardedParameter
 from gloofsdp.state_dict import StateDictManager, StateDictType
 
 
@@ -43,7 +43,7 @@ class EducationalFSDP(nn.Module):
             full_name = f"{prefix}{param_name}" if prefix else param_name
 
             # Instantiate sharded parameter management wrapper
-            sharded_param = DTensorShardedParameter(
+            sharded_param = ShardedParameter(
                 name=full_name,
                 module=module,
                 param=param,
@@ -63,12 +63,12 @@ class EducationalFSDP(nn.Module):
         """Delegates forward pass execution to wrapped inner module."""
         return self.module(*args, **kwargs)
 
-    def _get_sharded_param_map(self) -> Dict[str, DTensorShardedParameter]:
+    def _get_sharded_param_map(self) -> Dict[str, ShardedParameter]:
         """
         Dynamically collects all DTensorShardedParameter objects across
         submodules by searching through module attributes.
         """
-        sharded_map: Dict[str, DTensorShardedParameter] = {}
+        sharded_map: Dict[str, ShardedParameter] = {}
 
         for mod_name, submodule in self.module.named_modules():
             # Check if this submodule holds any registered sharded parameter objects

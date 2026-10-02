@@ -49,7 +49,7 @@ from torch.distributed.tensor import DTensor, Partial, Replicate, Shard
 from gloofsdp.logging import logger
 
 if TYPE_CHECKING:
-    from gloofsdp.sharded_parameter import DTensorShardedParameter
+    from gloofsdp.sharded_parameter import ShardedParameter
 
 
 class FSDPAllGatherFunction(torch.autograd.Function):
@@ -58,7 +58,7 @@ class FSDPAllGatherFunction(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx: Any, param: "DTensorShardedParameter") -> torch.Tensor:
+    def forward(ctx: Any, param: "ShardedParameter") -> torch.Tensor:
         """
         Gathers local parameter shards across ranks to form the full global parameter.
         """
@@ -96,7 +96,7 @@ class FSDPAllGatherFunction(torch.autograd.Function):
         """
         Reduces incoming full-shape gradient across ranks back into a local gradient shard.
         """
-        param: DTensorShardedParameter = ctx.param
+        param: ShardedParameter = ctx.param
 
         # 1. Wrap un-reduced full gradient as Partial() across the process group
         grad_dtensor = DTensor.from_local(
@@ -134,7 +134,7 @@ class FSDPAllGatherFunction(torch.autograd.Function):
 class ForwardPreHook:
     """Module pre-forward hook that gathers parameter shards before computation starts."""
 
-    def __init__(self, sharded_param: "DTensorShardedParameter"):
+    def __init__(self, sharded_param: "ShardedParameter"):
         self.sharded_param = sharded_param
 
     def __call__(self, module: nn.Module, inputs: Any) -> None:
@@ -154,7 +154,7 @@ class ForwardPreHook:
 class ForwardPostHook:
     """Module post-forward hook that releases full parameters immediately after computation finishes."""
 
-    def __init__(self, sharded_param: "DTensorShardedParameter"):
+    def __init__(self, sharded_param: "ShardedParameter"):
         self.sharded_param = sharded_param
 
     def __call__(self, module: nn.Module, args: tuple[Any, ...], output: Any) -> None:
@@ -176,7 +176,7 @@ class ForwardPostHook:
 class BackwardPreHook:
     """Module backward pre-hook that re-gathers full weights for gradient calculations."""
 
-    def __init__(self, sharded_param: "DTensorShardedParameter"):
+    def __init__(self, sharded_param: "ShardedParameter"):
         self.sharded_param = sharded_param
 
     def __call__(self, module: nn.Module, grad_output: Any) -> None:
@@ -196,7 +196,7 @@ class BackwardPreHook:
 class BackwardPostHook:
     """Module backward post-hook that frees the gathered weight after gradient computations."""
 
-    def __init__(self, sharded_param: "DTensorShardedParameter") -> None:
+    def __init__(self, sharded_param: "ShardedParameter") -> None:
         self.sharded_param = sharded_param
 
     def __call__(self, module: nn.Module, grad_input: tuple, grad_output: tuple) -> None:

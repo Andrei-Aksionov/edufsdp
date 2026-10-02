@@ -13,7 +13,7 @@ from torch.distributed.device_mesh import DeviceMesh
 from torch.distributed.tensor import Shard, distribute_tensor
 
 
-class DTensorShardedParameter:
+class ShardedParameter:
     """
     Pure data container managing parameter shard metadata and tensor state on a Module.
 
