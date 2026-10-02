@@ -47,7 +47,7 @@ class StateDictManager:
                 if state_dict_type == StateDictType.LOCAL:
                     tensor = p.local_shard
                 else:  # StateDictType.FULL
-                    tensor = p._full_tensor if p.is_gathered else FSDPAllGatherFunction.apply(p)
+                    tensor = p._full_tensor if p.is_gathered else FSDPAllGatherFunction.apply(p.local_shard, p)
 
             state_dict[name] = tensor.detach().clone()
 

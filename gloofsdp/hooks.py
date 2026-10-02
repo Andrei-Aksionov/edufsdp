@@ -58,22 +58,39 @@ class FSDPAllGatherFunction(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx: Any, param: "ShardedParameter") -> torch.Tensor:
+    def forward(ctx: Any, local_param: torch.Tensor, sharded_param: "ShardedParameter") -> torch.Tensor:
+        """Gathers rank-local parameter shards into the full global parameter.
+
+        By receiving ``local_param`` explicitly as a tensor argument alongside the
+        ``sharded_param`` metadata container, PyTorch autograd can directly track
+        the leaf tensor in the execution graph, ensuring backward gradients are
+        correctly routed back to ``local_param.grad``.
+
+        Args:
+            ctx: Autograd context used to store metadata across the forward and
+                backward passes.
+            local_param: The rank-local slice of the parameter tensor carrying
+                autograd graph history (`requires_grad=True`).
+            sharded_param: Parameter container holding distributed topology,
+                device mesh, and sharding metadata.
+
+        Returns:
+            torch.Tensor: The reconstructed global parameter tensor assembled
+            via All-Gather across the device mesh.
         """
-        Gathers local parameter shards across ranks to form the full global parameter.
-        """
-        ctx.param = param
+
+        ctx.param = sharded_param
 
         # 1. Wrap rank-local parameter shard as a DTensor sharded along dimension 0
         sharded_dtensor = DTensor.from_local(
-            param.local_shard,
-            device_mesh=param.device_mesh,
+            local_param,
+            device_mesh=sharded_param.device_mesh,
             placements=[Shard(dim=0)],
         )
 
         # 2. Execute All-Gather collective across process group (Shard(0) -> Replicate())
         replicated_dtensor = sharded_dtensor.redistribute(
-            device_mesh=param.device_mesh,
+            device_mesh=sharded_param.device_mesh,
             placements=[Replicate()],
         )
 
@@ -81,21 +98,39 @@ class FSDPAllGatherFunction(torch.autograd.Function):
 
         logger.log_transition(
             event_name="all_gather",
-            param_name=param.name,
-            total_elements=param.global_shape.numel(),
-            shard_range=param.shard_range,
+            param_name=sharded_param.name,
+            total_elements=sharded_param.global_shape.numel(),
+            shard_range=sharded_param.shard_range,
             before_gathered=False,
             after_gathered=True,
-            shape=f"{tuple(param.local_shard.shape)} -> {tuple(result.shape)}",
+            shape=f"{tuple(sharded_param.local_shard.shape)} -> {tuple(result.shape)}",
         )
 
         return result
 
     @staticmethod
-    def backward(ctx: Any, grad_output: torch.Tensor) -> tuple[torch.Tensor, None, None, None, None]:
+    def backward(ctx: Any, grad_output: torch.Tensor) -> tuple[torch.Tensor, None]:
+        """Reduces the incoming global gradient back into a local gradient shard.
+
+        Applies a Reduce-Scatter collective across the process group to aggregate and
+        shard the accumulated global gradient. The resulting local gradient shard is
+        returned as the first element of the tuple to match ``local_param`` in the
+        forward signature, enabling PyTorch autograd to assign it to ``local_param.grad``.
+
+        Args:
+            ctx: Autograd context containing stored distributed metadata (device mesh,
+                sharding dimensions) from the forward pass.
+            grad_output: Incoming full-shape gradient tensor computed during the backward
+                pass for the gathered parameter.
+
+        Returns:
+            tuple[torch.Tensor, None]: A 2-tuple where:
+                - The first element is the rank-local sharded gradient tensor for
+                  ``local_param``, scaled by world size.
+                - The second element is ``None``, matching non-tensor metadata argument
+                  ``sharded_param`` from the forward pass.
         """
-        Reduces incoming full-shape gradient across ranks back into a local gradient shard.
-        """
+
         param: ShardedParameter = ctx.param
 
         # 1. Wrap un-reduced full gradient as Partial() across the process group
@@ -127,8 +162,8 @@ class FSDPAllGatherFunction(torch.autograd.Function):
             shape=f"{tuple(grad_output.shape)} -> {tuple(sharded_grad.shape)}",
         )
 
-        # Matches forward inputs: (local_shard, device_mesh, param_name, shard_range, global_numel)
-        return sharded_grad
+        # Matches forward inputs
+        return sharded_grad, None
 
 
 class ForwardPreHook:
@@ -143,10 +178,10 @@ class ForwardPreHook:
 
         # Run All-Gather with or without autograd graph tracking
         if self.sharded_param.sharded_param.requires_grad and torch.is_grad_enabled():
-            full_tensor = FSDPAllGatherFunction.apply(self.sharded_param)
+            full_tensor = FSDPAllGatherFunction.apply(self.sharded_param.local_shard, self.sharded_param)
         else:
             with torch.no_grad():
-                full_tensor = FSDPAllGatherFunction.apply(self.sharded_param)
+                full_tensor = FSDPAllGatherFunction.apply(self.sharded_param.local_shard, self.sharded_param)
 
         self.sharded_param.set_unsharded(full_tensor)
 
@@ -188,7 +223,7 @@ class BackwardPreHook:
         # - Omitting `torch.no_grad()` here would create a duplicate AllGather node inside the backward graph
         #   while the autograd engine is actively executing, causing runtime graph mutation errors.
         with torch.no_grad():
-            full_tensor = FSDPAllGatherFunction.apply(self.sharded_param)
+            full_tensor = FSDPAllGatherFunction.apply(self.sharded_param.local_shard, self.sharded_param)
 
         self.sharded_param.set_unsharded(full_tensor)
 
