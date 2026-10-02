@@ -1,11 +1,11 @@
 """
 Autograd and module execution hooks for Educational FSDP.
 
-This module provides:
-1. `FSDPAllGatherFunction`: A symmetric `torch.autograd.Function` bridging forward All-Gather
-   and backward Reduce-Scatter operations inside PyTorch's dynamic autograd graph.
-2. `ForwardPreHook`: A PyTorch module hook that reconstructs full weights before module computation.
-3. `ForwardPostHook`: A PyTorch module hook that releases full weights after module computation.
+Provides:
+1. `FSDPAllGatherFunction`: Standard `torch.autograd.Function` handling All-Gather and Reduce-Scatter.
+2. `ForwardPreHook`: Module pre-hook managing parameter reconstruction before calculation.
+3. `ForwardPostHook`: Module post-hook clearing full weights back to local shards after forward pass.
+4. `BackwardPreHook` / `BackwardPostHook`: Module backward hooks managing parameter lifecycle during backward pass.
 
 
 ========================================================================================
@@ -55,151 +55,118 @@ if TYPE_CHECKING:
 class FSDPAllGatherFunction(torch.autograd.Function):
     """
     Symmetric autograd function pairing forward parameter All-Gather with backward gradient Reduce-Scatter.
-
-    By inheriting from `torch.autograd.Function`, PyTorch's engine automatically tracks
-    this operation during forward execution and routes incoming gradients through `backward()`
-    during loss.backward(). This eliminates the need for manual `register_hook()` calls on tensors.
     """
 
     @staticmethod
-    def forward(
-        ctx: Any,
-        local_param: torch.Tensor,
-        dtensor_param: "DTensorShardedParameter",
-    ) -> torch.Tensor:
+    def forward(ctx: Any, param: "DTensorShardedParameter") -> torch.Tensor:
         """
         Gathers local parameter shards across ranks to form the full global parameter.
-
-        Args:
-            ctx: Autograd context object for storing state across forward/backward passes.
-            local_param: Rank-local parameter shard tensor (leaf node managed by optimizer).
-            dtensor_param: FSDP metadata container tracking mesh, shapes, and logging info.
-
-        Returns:
-            torch.Tensor: The reconstructed full parameter tensor allocated on the local process.
         """
-        # Save metadata reference for backward execution pass
-        ctx.dtensor_param = dtensor_param
-        device_mesh = dtensor_param.device_mesh
+        ctx.param = param
 
         # 1. Wrap rank-local parameter shard as a DTensor sharded along dimension 0
         sharded_dtensor = DTensor.from_local(
-            local_param,
-            device_mesh=device_mesh,
+            param.local_shard,
+            device_mesh=param.device_mesh,
             placements=[Shard(dim=0)],
         )
 
         # 2. Execute All-Gather collective across process group (Shard(0) -> Replicate())
         replicated_dtensor = sharded_dtensor.redistribute(
-            device_mesh=device_mesh,
+            device_mesh=param.device_mesh,
             placements=[Replicate()],
         )
 
-        # Return unwrapped raw PyTorch tensor to be set on module attribute
         result = replicated_dtensor.to_local()
 
-        # Log parameter transition from Sharded to Gathered state
         logger.log_transition(
             event_name="all_gather",
-            param_name=dtensor_param.name,
-            total_elements=dtensor_param.global_shape.numel(),
-            shard_range=dtensor_param.shard_range,
+            param_name=param.name,
+            total_elements=param.global_shape.numel(),
+            shard_range=param.shard_range,
             before_gathered=False,
             after_gathered=True,
-            shape=f"{tuple(local_param.shape)} -> {tuple(result.shape)}",
+            shape=f"{tuple(param.local_shard.shape)} -> {tuple(result.shape)}",
         )
 
         return result
 
     @staticmethod
-    def backward(ctx: Any, grad_output: torch.Tensor) -> tuple[torch.Tensor | None, None]:
+    def backward(ctx: Any, grad_output: torch.Tensor) -> tuple[torch.Tensor, None, None, None, None]:
         """
         Reduces incoming full-shape gradient across ranks back into a local gradient shard.
-
-        Triggered automatically by PyTorch's C++ autograd engine when reaching the
-        <FSDPAllGatherFunctionBackward> node in the backward computation graph.
-
-        Args:
-            ctx: Autograd context containing saved references from `forward()`.
-            grad_output: Full-shape gradient calculated with respect to the gathered full weight.
-
-        Returns:
-            tuple[torch.Tensor | None, None]: Gradient corresponding to `local_param` input,
-            and `None` for the `dtensor_param` argument (which does not track gradients).
         """
-        dtensor_param: "DTensorShardedParameter" = ctx.dtensor_param
-        device_mesh = dtensor_param.device_mesh
+        param: DTensorShardedParameter = ctx.param
 
         # 1. Wrap un-reduced full gradient as Partial() across the process group
-        # Partial() in DTensor.from_local() will force DTensor to communicate gradients
-        # across processes during backward, bringing Rank 0 and Rank 1 back into alignment
         grad_dtensor = DTensor.from_local(
             grad_output,
-            device_mesh=device_mesh,
+            device_mesh=param.device_mesh,
             placements=[Partial()],
         )
 
         # 2. Execute Reduce-Scatter collective across mesh (Partial() -> Shard(0))
         sharded_grad_dtensor = grad_dtensor.redistribute(
-            device_mesh=device_mesh,
+            device_mesh=param.device_mesh,
             placements=[Shard(dim=0)],
         )
 
         sharded_grad = sharded_grad_dtensor.to_local()
 
         # 3. Average reduced additive gradient sum by process group world size
-        world_size = device_mesh.size()
+        world_size = param.device_mesh.size()
         sharded_grad = sharded_grad / world_size
 
         logger.log_transition(
             event_name="reduce_scatter",
-            param_name=f"{dtensor_param.name}.grad",
-            total_elements=dtensor_param.global_shape.numel(),
-            shard_range=dtensor_param.shard_range,
+            param_name=f"{param.name}.grad",
+            total_elements=param.global_shape.numel(),
+            shard_range=param.shard_range,
             before_gathered=True,
             after_gathered=False,
             shape=f"{tuple(grad_output.shape)} -> {tuple(sharded_grad.shape)}",
         )
 
-        # PyTorch autograd routes sharded_grad directly to local_param.grad
-        return sharded_grad, None
+        # Matches forward inputs: (local_shard, device_mesh, param_name, shard_range, global_numel)
+        return sharded_grad
 
 
 class ForwardPreHook:
-    """
-    Module pre-forward hook that gathers parameter shards before computation starts.
+    """Module pre-forward hook that gathers parameter shards before computation starts."""
 
-    Registered on individual submodules via `module.register_forward_pre_hook()`.
-    """
-
-    def __init__(self, dtensor_param: "DTensorShardedParameter"):
-        self.dtensor_param = dtensor_param
+    def __init__(self, sharded_param: "DTensorShardedParameter"):
+        self.sharded_param = sharded_param
 
     def __call__(self, module: nn.Module, inputs: Any) -> None:
-        """Triggers All-Gather parameter reconstruction right before module.forward()."""
-        self.dtensor_param.gather()
+        if self.sharded_param.is_gathered:
+            return
+
+        # Run All-Gather with or without autograd graph tracking
+        if self.sharded_param.sharded_param.requires_grad and torch.is_grad_enabled():
+            full_tensor = FSDPAllGatherFunction.apply(self.sharded_param)
+        else:
+            with torch.no_grad():
+                full_tensor = FSDPAllGatherFunction.apply(self.sharded_param)
+
+        self.sharded_param.set_unsharded(full_tensor)
 
 
 class ForwardPostHook:
-    """
-    Module post-forward hook that releases full parameters immediately after computation finishes.
+    """Module post-forward hook that releases full parameters immediately after computation finishes."""
 
-    Registered on individual submodules via `module.register_forward_hook()`.
-    """
-
-    def __init__(self, dtensor_param: "DTensorShardedParameter"):
-        self.dtensor_param = dtensor_param
+    def __init__(self, sharded_param: "DTensorShardedParameter"):
+        self.sharded_param = sharded_param
 
     def __call__(self, module: nn.Module, args: tuple[Any, ...], output: Any) -> None:
-        """Restores module attribute back to local shard to release peak RAM."""
-        before_shape = self.dtensor_param.shape
-        self.dtensor_param.free()
-        after_shape = self.dtensor_param.shape
+        before_shape = self.sharded_param.shape
+        self.sharded_param.set_sharded()
+        after_shape = self.sharded_param.shape
+
         logger.log_transition(
             event_name="free",
-            param_name=self.dtensor_param.name,
-            total_elements=self.dtensor_param.global_shape.numel(),
-            shard_range=self.dtensor_param.shard_range,
+            param_name=self.sharded_param.name,
+            total_elements=self.sharded_param.global_shape.numel(),
+            shard_range=self.sharded_param.shard_range,
             before_gathered=True,
             after_gathered=False,
             shape=f"{tuple(before_shape)} -> {tuple(after_shape)}",
@@ -207,28 +174,36 @@ class ForwardPostHook:
 
 
 class BackwardPreHook:
-    """
-    Module backward pre-hook that re-gathers full weights JUST BEFORE
-    autograd computes the module's weight gradients.
-    """
+    """Module backward pre-hook that re-gathers full weights for gradient calculations."""
 
-    def __init__(self, dtensor_param: "DTensorShardedParameter"):
-        self.dtensor_param = dtensor_param
+    def __init__(self, sharded_param: "DTensorShardedParameter"):
+        self.sharded_param = sharded_param
 
     def __call__(self, module: nn.Module, grad_output: Any) -> None:
-        # All-Gather #2: Re-construct full weight tensor needed for dW math
-        self.dtensor_param.gather()
+        if self.sharded_param.is_gathered:
+            return
+
+        # WHY torch.no_grad() IS USED HERE:
+        # - The primary autograd graph node for `FSDPAllGatherFunction` was recorded during forward execution.
+        # - Omitting `torch.no_grad()` here would create a duplicate AllGather node inside the backward graph
+        #   while the autograd engine is actively executing, causing runtime graph mutation errors.
+        with torch.no_grad():
+            full_tensor = FSDPAllGatherFunction.apply(self.sharded_param)
+
+        self.sharded_param.set_unsharded(full_tensor)
 
 
 class BackwardPostHook:
-    def __init__(self, sharded_param: DTensorShardedParameter) -> None:
+    """Module backward post-hook that frees the gathered weight after gradient computations."""
+
+    def __init__(self, sharded_param: "DTensorShardedParameter") -> None:
         self.sharded_param = sharded_param
 
     def __call__(self, module: nn.Module, grad_input: tuple, grad_output: tuple) -> None:
-        # Reshard weight data back to resting local shape
         before_shape = self.sharded_param.shape
-        self.sharded_param.free()
+        self.sharded_param.set_sharded()
         after_shape = self.sharded_param.shape
+
         logger.log_transition(
             event_name="free",
             param_name=self.sharded_param.name,
