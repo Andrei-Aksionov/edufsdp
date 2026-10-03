@@ -36,8 +36,8 @@ def main() -> None:
     optimizer = torch.optim.Adam(fsdp_model.parameters(), lr=0.1)
     criterion = nn.MSELoss()
 
-    inputs = torch.randn(2, 8, requires_grad=True)
-    targets = torch.randn(2, 4)
+    inputs = torch.randn(2, 18, requires_grad=True)
+    targets = torch.randn(2, 12)
 
     logger.log_hooks = True
     for _ in range(1):

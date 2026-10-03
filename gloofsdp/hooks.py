@@ -92,21 +92,16 @@ class FSDPAllGatherFunction(torch.autograd.Function):
         replicated_dtensor = sharded_dtensor.redistribute(
             device_mesh=sharded_param.device_mesh,
             placements=[Replicate()],
-        )
-
-        result = replicated_dtensor.to_local()
+        ).to_local()
 
         logger.log_transition(
             event_name="all_gather",
-            param_name=sharded_param.name,
-            total_elements=sharded_param.global_shape.numel(),
-            shard_range=sharded_param.shard_range,
-            before_gathered=False,
-            after_gathered=True,
-            shape=f"{tuple(sharded_param.local_shard.shape)} -> {tuple(result.shape)}",
+            parameter_name=sharded_param.name,
+            size_before=sharded_param.local_shard.shape,
+            size_after=replicated_dtensor.shape,
         )
 
-        return result
+        return replicated_dtensor
 
     @staticmethod
     def backward(ctx: Any, grad_output: torch.Tensor) -> tuple[torch.Tensor, None]:
@@ -154,12 +149,9 @@ class FSDPAllGatherFunction(torch.autograd.Function):
 
         logger.log_transition(
             event_name="reduce_scatter",
-            param_name=f"{param.name}.grad",
-            total_elements=param.global_shape.numel(),
-            shard_range=param.shard_range,
-            before_gathered=True,
-            after_gathered=False,
-            shape=f"{tuple(grad_output.shape)} -> {tuple(sharded_grad.shape)}",
+            parameter_name=f"{param.name}.grad",
+            size_before=grad_output.shape,
+            size_after=sharded_grad.shape,
         )
 
         # Matches forward inputs
@@ -199,12 +191,9 @@ class ForwardPostHook:
 
         logger.log_transition(
             event_name="free",
-            param_name=self.sharded_param.name,
-            total_elements=self.sharded_param.global_shape.numel(),
-            shard_range=self.sharded_param.shard_range,
-            before_gathered=True,
-            after_gathered=False,
-            shape=f"{tuple(before_shape)} -> {tuple(after_shape)}",
+            parameter_name=self.sharded_param.name,
+            size_before=before_shape,
+            size_after=after_shape,
         )
 
 
@@ -241,10 +230,7 @@ class BackwardPostHook:
 
         logger.log_transition(
             event_name="free",
-            param_name=self.sharded_param.name,
-            total_elements=self.sharded_param.global_shape.numel(),
-            shard_range=self.sharded_param.shard_range,
-            before_gathered=True,
-            after_gathered=False,
-            shape=f"{tuple(before_shape)} -> {tuple(after_shape)}",
+            parameter_name=self.sharded_param.name,
+            size_before=before_shape,
+            size_after=after_shape,
         )
