@@ -5,8 +5,8 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch.distributed import init_device_mesh
+from torch.distributed.checkpoint.state_dict import StateDictOptions, get_state_dict
 from torch.distributed.fsdp import FullyShardedDataParallel as NativeFSDP
-from torch.distributed.fsdp import StateDictType
 
 from gloofsdp.state_dict import StateDictType as EDUStateDictType
 
@@ -58,8 +58,9 @@ def test_state_dict_compatibility():
     edu_full_state_dict = edu_model.state_dict(state_dict_type=EDUStateDictType.FULL)
 
     # Get Full State Dict from Native PyTorch FSDP
-    with NativeFSDP.state_dict_type(native_model, StateDictType.FULL_STATE_DICT):
-        native_full_state_dict = native_model.state_dict()
+    native_full_state_dict, _ = get_state_dict(
+        native_model, optimizers=(), options=StateDictOptions(full_state_dict=True)
+    )
 
     if rank == 0:
         assert set(edu_full_state_dict.keys()) == set(native_full_state_dict.keys()), (
