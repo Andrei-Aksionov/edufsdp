@@ -44,7 +44,7 @@ class EducationalFSDP(nn.Module):
 
             # Instantiate sharded parameter management wrapper
             sharded_param = ShardedParameter(
-                name=full_name,
+                fqn=full_name,
                 module=module,
                 param=param,
                 device_mesh=self.device_mesh,

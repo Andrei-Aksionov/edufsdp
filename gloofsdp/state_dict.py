@@ -65,7 +65,9 @@ class StateDictManager:
                 if state_dict_type == StateDictType.LOCAL:
                     tensor = p.local_shard
                 else:  # StateDictType.FULL
-                    tensor = p._full_tensor if p.is_gathered else FSDPAllGatherFunction.apply(p.local_shard, p)
+                    # TODO: I don't like this. This should retrieve data from the parameter attached to the module.
+                    # So, ideally, the code should check that if it's not gathered yet, call the gather function first.
+                    tensor = p._gathered_tensor if p.is_gathered else FSDPAllGatherFunction.apply(p.local_shard, p)
 
             state_dict[name] = tensor.detach().clone()
 

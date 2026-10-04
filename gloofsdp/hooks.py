@@ -96,7 +96,7 @@ class FSDPAllGatherFunction(torch.autograd.Function):
 
         logger.log_transition(
             event_name="all_gather",
-            parameter_name=sharded_param.name,
+            parameter_name=sharded_param.fqn,
             size_before=sharded_param.local_shard.shape,
             size_after=replicated_dtensor.shape,
         )
@@ -149,7 +149,7 @@ class FSDPAllGatherFunction(torch.autograd.Function):
 
         logger.log_transition(
             event_name="reduce_scatter",
-            parameter_name=f"{param.name}.grad",
+            parameter_name=f"{param.fqn}.grad",
             size_before=grad_output.shape,
             size_after=sharded_grad.shape,
         )
@@ -169,7 +169,7 @@ class ForwardPreHook:
             return
 
         # Run All-Gather with or without autograd graph tracking
-        if self.sharded_param.sharded_param.requires_grad and torch.is_grad_enabled():
+        if self.sharded_param.dtensor.requires_grad and torch.is_grad_enabled():
             full_tensor = FSDPAllGatherFunction.apply(self.sharded_param.local_shard, self.sharded_param)
         else:
             with torch.no_grad():
@@ -191,7 +191,7 @@ class ForwardPostHook:
 
         logger.log_transition(
             event_name="free",
-            parameter_name=self.sharded_param.name,
+            parameter_name=self.sharded_param.fqn,
             size_before=before_shape,
             size_after=after_shape,
         )
@@ -230,7 +230,7 @@ class BackwardPostHook:
 
         logger.log_transition(
             event_name="free",
-            parameter_name=self.sharded_param.name,
+            parameter_name=self.sharded_param.fqn,
             size_before=before_shape,
             size_after=after_shape,
         )
