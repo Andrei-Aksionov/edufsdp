@@ -7,7 +7,7 @@ managing:
   2. Symmetric state transitions (`set_unsharded` <-> `set_sharded`).
   3. Memory cleanup and local vs. full tensor attribute lifecycle.
 
-Parameter Lifecycle State Machine:
+Parameter lifecycle:
 
                  ┌──────────────────────────────────────────────┐
                  │                SHARDED STATE                 │

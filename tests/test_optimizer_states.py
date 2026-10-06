@@ -9,7 +9,7 @@ import pytest
 import torch
 from torch.distributed.fsdp import fully_shard
 
-from gloofsdp.wrapper import EducationalFSDP
+from gloofsdp.fsdp import FSDP
 from tests.base.distributed_test import DistributedTestBase
 
 
@@ -20,7 +20,7 @@ class TestOptimizerStates(DistributedTestBase):
     def test_optimizer_state_empty_before_step(self) -> None:
         """Verifies that optimizer states remain unitialized/empty across init, forward, and backward."""
         model = copy.deepcopy(self.base_model)
-        wrapped = EducationalFSDP(model, device_mesh=self.device_mesh)
+        wrapped = FSDP(model, device_mesh=self.device_mesh)
         optimizer = torch.optim.Adam(wrapped.parameters(), lr=0.001)
 
         # 1. State should be empty right after instantiation
@@ -40,7 +40,7 @@ class TestOptimizerStates(DistributedTestBase):
         """Verifies optimizer state lazy creation, local sharded shapes, and parity against FSDP2 after step()."""
         # 1. Setup Custom FSDP
         model_custom = copy.deepcopy(self.base_model)
-        wrapped_custom = EducationalFSDP(model_custom, device_mesh=self.device_mesh)
+        wrapped_custom = FSDP(model_custom, device_mesh=self.device_mesh)
         optimizer_custom = torch.optim.Adam(wrapped_custom.parameters(), lr=0.001)
 
         # 2. Setup Native FSDP2

@@ -10,7 +10,7 @@ import torch
 from torch.distributed.fsdp import fully_shard
 from torch.distributed.tensor import DTensor
 
-from gloofsdp.wrapper import EducationalFSDP
+from gloofsdp.fsdp import FSDP
 from tests.base.distributed_test import DistributedTestBase
 
 
@@ -21,7 +21,7 @@ class TestDTensorConsistency(DistributedTestBase):
     def test_dtensor_type_lifecycle_forward(self) -> None:
         """Verifies that module parameters maintain DTensor instance types pre/post forward."""
         model = copy.deepcopy(self.base_model)
-        wrapped = EducationalFSDP(model, device_mesh=self.device_mesh)
+        wrapped = FSDP(model, device_mesh=self.device_mesh)
 
         # 1. Check resting state before forward
         for param_name in self.expected_shapes:
@@ -46,7 +46,7 @@ class TestDTensorConsistency(DistributedTestBase):
     def test_dtensor_type_lifecycle_backward(self) -> None:
         """Verifies that module weights and .grad attributes are DTensor instances post-backward."""
         model = copy.deepcopy(self.base_model)
-        wrapped = EducationalFSDP(model, device_mesh=self.device_mesh)
+        wrapped = FSDP(model, device_mesh=self.device_mesh)
 
         dummy_input = torch.randn(2, 16, device=self.device, requires_grad=True)
         output = wrapped(dummy_input)
@@ -71,7 +71,7 @@ class TestDTensorConsistency(DistributedTestBase):
     def test_dtensor_parity_against_native_fsdp2(self) -> None:
         """Verifies complete DTensor property parity (type, placement, mesh, grad type) against Native FSDP2."""
         model_custom = copy.deepcopy(self.base_model)
-        wrapped_custom = EducationalFSDP(model_custom, device_mesh=self.device_mesh)
+        wrapped_custom = FSDP(model_custom, device_mesh=self.device_mesh)
 
         model_native = copy.deepcopy(self.base_model)
         fully_shard(model_native.fc1, mesh=self.device_mesh)

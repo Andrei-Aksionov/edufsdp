@@ -8,10 +8,9 @@ from torch.distributed import init_device_mesh
 from torch.distributed.checkpoint.state_dict import StateDictOptions, get_state_dict
 from torch.distributed.fsdp import FullyShardedDataParallel as NativeFSDP
 
-from gloofsdp.state_dict import StateDictType as EDUStateDictType
-
 # Import your Educational FSDP implementation
-from gloofsdp.wrapper import EducationalFSDP
+from gloofsdp.fsdp import FSDP
+from gloofsdp.state_dict import StateDictType as EDUStateDictType
 
 
 class ToyModel(nn.Module):
@@ -46,7 +45,7 @@ def test_state_dict_compatibility():
         dist.broadcast(param.data, src=0)
 
     # Wrap with EducationalFSDP and Native FSDP
-    edu_model = EducationalFSDP(copy.deepcopy(base_model), device_mesh=mesh)
+    edu_model = FSDP(copy.deepcopy(base_model), device_mesh=mesh)
     native_model = NativeFSDP(copy.deepcopy(base_model), device_mesh=mesh, device_id=device)
 
     print(f"[Rank {rank}] Testing State Dict Extraction...")
@@ -115,7 +114,7 @@ def test_state_dict_compatibility():
     sharded_state_dict = edu_model.state_dict(EDUStateDictType.LOCAL)
 
     # Instantiate a fresh EducationalFSDP model and load the sharded state dict directly
-    fresh_edu_model = EducationalFSDP(ToyModel().to(device), device_mesh=mesh)
+    fresh_edu_model = FSDP(ToyModel().to(device), device_mesh=mesh)
     fresh_edu_model.load_state_dict(sharded_state_dict, EDUStateDictType.LOCAL)
 
     # Run forward pass on both original and restored models

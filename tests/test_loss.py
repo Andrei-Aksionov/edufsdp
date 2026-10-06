@@ -2,7 +2,7 @@ import pytest
 import torch
 from torch import nn
 
-from gloofsdp.wrapper import EducationalFSDP
+from gloofsdp.fsdp import FSDP
 from tests.base.distributed_test import DistributedTestBase
 
 
@@ -10,7 +10,7 @@ from tests.base.distributed_test import DistributedTestBase
 class TestFSDPLossDecrease(DistributedTestBase):
     def test_loss_decreases_across_ranks(self) -> None:
         """Executed inside each rank process via PyTest mp.spawn hook."""
-        fsdp_model = EducationalFSDP(self.base_model, device_mesh=self.device_mesh)
+        fsdp_model = FSDP(self.base_model, device_mesh=self.device_mesh)
         fsdp_optimizer = torch.optim.Adam(fsdp_model.parameters(), lr=0.1)
         criterion = nn.MSELoss()
 

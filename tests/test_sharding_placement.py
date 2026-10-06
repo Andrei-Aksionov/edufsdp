@@ -9,7 +9,7 @@ import pytest
 import torch
 from torch.distributed.fsdp import fully_shard
 
-from gloofsdp.wrapper import EducationalFSDP
+from gloofsdp.fsdp import FSDP
 from tests.base.distributed_test import DistributedTestBase
 
 
@@ -20,7 +20,7 @@ class TestShardingPlacement(DistributedTestBase):
     def test_static_resting_sharding(self) -> None:
         """Verifies that all wrapped layer parameters rest in a sharded state matching rank placement."""
         model = copy.deepcopy(self.base_model)
-        wrapped = EducationalFSDP(model, device_mesh=self.device_mesh)
+        wrapped = FSDP(model, device_mesh=self.device_mesh)
 
         for param_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = param_name.split(".")
@@ -32,7 +32,7 @@ class TestShardingPlacement(DistributedTestBase):
     def test_forward_pre_hook_all_gather_shapes(self) -> None:
         """Verifies that ForwardPreHook gathers all parameters to global shape prior to forward execution."""
         model = copy.deepcopy(self.base_model)
-        wrapped = EducationalFSDP(model, device_mesh=self.device_mesh)
+        wrapped = FSDP(model, device_mesh=self.device_mesh)
 
         gathered_shapes = {}
 
@@ -58,7 +58,7 @@ class TestShardingPlacement(DistributedTestBase):
     def test_forward_post_hook_memory_cleanup_shapes(self) -> None:
         """Verifies that ForwardPostHook frees gathered parameters back to local sharded shapes post execution."""
         model = copy.deepcopy(self.base_model)
-        wrapped = EducationalFSDP(model, device_mesh=self.device_mesh)
+        wrapped = FSDP(model, device_mesh=self.device_mesh)
 
         dummy_input = torch.randn(2, 16)
         _ = wrapped(dummy_input)
@@ -74,7 +74,7 @@ class TestShardingPlacement(DistributedTestBase):
     def test_fsdp2_dtensor_parity_all_layers(self) -> None:
         """Verifies element count parity against Native PyTorch FSDP2 (fully_shard) for all layers."""
         model_custom = copy.deepcopy(self.base_model)
-        wrapped_custom = EducationalFSDP(model_custom, device_mesh=self.device_mesh)
+        wrapped_custom = FSDP(model_custom, device_mesh=self.device_mesh)
 
         model_native = copy.deepcopy(self.base_model)
         fully_shard(model_native.fc1, mesh=self.device_mesh)
@@ -95,7 +95,7 @@ class TestShardingPlacement(DistributedTestBase):
     def test_fsdp2_dtensor_parity_post_forward(self) -> None:
         """Verifies weight values, output parity, and None grads post-forward pass against FSDP2."""
         model_custom = copy.deepcopy(self.base_model)
-        wrapped_custom = EducationalFSDP(model_custom, device_mesh=self.device_mesh)
+        wrapped_custom = FSDP(model_custom, device_mesh=self.device_mesh)
 
         model_native = copy.deepcopy(self.base_model)
         fully_shard(model_native.fc1, mesh=self.device_mesh)
@@ -150,7 +150,7 @@ class TestShardingPlacement(DistributedTestBase):
 
         # 1. Custom EducationalFSDP execution
         model_custom = copy.deepcopy(self.base_model)
-        wrapped_custom = EducationalFSDP(model_custom, device_mesh=self.device_mesh)
+        wrapped_custom = FSDP(model_custom, device_mesh=self.device_mesh)
 
         torch.manual_seed(42)
         dummy_input = torch.randn(2, 16)
@@ -212,7 +212,7 @@ class TestShardingPlacement(DistributedTestBase):
     def test_pre_backward_all_gather_shapes(self) -> None:
         """Verifies that module weights are all-gathered during backward pass execution."""
         model = copy.deepcopy(self.base_model)
-        wrapped = EducationalFSDP(model, device_mesh=self.device_mesh)
+        wrapped = FSDP(model, device_mesh=self.device_mesh)
 
         pre_backward_param_shapes = {}
 
@@ -250,7 +250,7 @@ class TestShardingPlacement(DistributedTestBase):
     def test_post_backward_memory_cleanup_and_sharded_grads(self) -> None:
         """Verifies that module weights return to sharded shapes post-backward and module.weight.grad holds sharded gradients."""
         model = copy.deepcopy(self.base_model)
-        wrapped = EducationalFSDP(model, device_mesh=self.device_mesh)
+        wrapped = FSDP(model, device_mesh=self.device_mesh)
 
         dummy_input = torch.randn(2, 16)
         output = wrapped(dummy_input)
@@ -279,7 +279,7 @@ class TestShardingPlacement(DistributedTestBase):
     def test_fsdp2_dtensor_parity_post_backward(self) -> None:
         """Verifies weight, gradient shape, and gradient value parity post-backward against FSDP2."""
         model_custom = copy.deepcopy(self.base_model)
-        wrapped_custom = EducationalFSDP(model_custom, device_mesh=self.device_mesh)
+        wrapped_custom = FSDP(model_custom, device_mesh=self.device_mesh)
 
         model_native = copy.deepcopy(self.base_model)
         fully_shard(model_native.fc1, mesh=self.device_mesh)

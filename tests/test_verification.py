@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.fsdp import FullyShardedDataParallel as NativeFSDP
 
-from gloofsdp.wrapper import EducationalFSDP
+from gloofsdp.fsdp import FSDP
 
 
 class MLP(nn.Module):
@@ -52,7 +52,7 @@ def test_run_verification_suite():
 
     # 2. Wrap Models
     # Educational FSDP (gloofsdp)
-    edu_model = EducationalFSDP(edu_raw_model, device_mesh=mesh)
+    edu_model = FSDP(edu_raw_model, device_mesh=mesh)
     edu_optimizer = torch.optim.SGD(edu_model.parameters(), lr=0.01)
 
     # PyTorch Native FSDP
@@ -111,7 +111,7 @@ def test_run_verification_loss_decreases():
     # base_model = ToyModel().to(device)
     base_model = MLP().to(device)
 
-    fsdp_model = EducationalFSDP(base_model, device_mesh=mesh)
+    fsdp_model = FSDP(base_model, device_mesh=mesh)
     fsdp_optimizer = torch.optim.SGD(fsdp_model.parameters(), lr=0.01)
     criterion = nn.MSELoss()
 
