@@ -122,7 +122,7 @@ class RankLogger:
         self,
         event_name: str,
         parameter_name: str,
-        size_before: torch.Size,
+        size_before: torch.Size,  # TODO: should it be size or shape? Elsewhere it's provided as .shape
         size_after: torch.Size,
     ) -> None:
         """Logs parameter shape transitions and visual ASCII shard state."""
