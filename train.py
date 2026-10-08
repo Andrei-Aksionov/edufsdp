@@ -41,17 +41,18 @@ def main() -> None:
 
     logger.log_hooks = True
     for _ in range(1):
-        logger.log_rank0(f"\n\n {'=' * 55} Forward pass {'=' * 55}\n")
+        logger.log_section_header("Forward pass")
 
         outputs = fsdp_model(inputs)
         loss = criterion(outputs, targets)
-        logger.log_rank0("\n\n######## LOSS VALUES: ########\n")
-        logger.log_ordered(f"Loss value: {loss.item():.4f}")
-        logger.log_rank0(f"\n{'#' * 30}")
 
-        optimizer.zero_grad()
-        logger.log_rank0(f"\n\n {'=' * 55} Backward pass {'=' * 55}\n")
+        logger.log_header("LOSS VALUES")
+        logger.log_ordered(f"Loss value: {loss.item():.4f}")
+        logger.log_divider("#", 30)
+
+        logger.log_section_header("Backward pass")
         logger.reset_step()
+        optimizer.zero_grad()
         loss.backward()
 
         optimizer.step()

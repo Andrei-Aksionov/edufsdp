@@ -78,8 +78,8 @@ class FSDPAllGatherFunction(torch.autograd.Function):
         logger.log_transition(
             event_name="all_gather",
             parameter_name=sharded_parameter.fqn,
-            size_before=sharded_parameter.local_shard.shape,
-            size_after=replicated_dtensor.shape,
+            shape_before=sharded_parameter.local_shard.shape,
+            shape_after=replicated_dtensor.shape,
         )
 
         return replicated_dtensor
@@ -130,8 +130,8 @@ class FSDPAllGatherFunction(torch.autograd.Function):
         logger.log_transition(
             event_name="reduce_scatter",
             parameter_name=f"{parameter.fqn}.grad",
-            size_before=grad_output.shape,
-            size_after=sharded_grad.shape,
+            shape_before=grad_output.shape,
+            shape_after=sharded_grad.shape,
         )
 
         # Matches forward inputs signature (local_parameter, sharded_parameter)
@@ -182,8 +182,8 @@ class ForwardPostHook:
         logger.log_transition(
             event_name="free",
             parameter_name=self.sharded_parameter.fqn,
-            size_before=before_shape,
-            size_after=after_shape,
+            shape_before=before_shape,
+            shape_after=after_shape,
         )
 
 
@@ -228,6 +228,6 @@ class BackwardPostHook:
         logger.log_transition(
             event_name="free",
             parameter_name=self.sharded_parameter.fqn,
-            size_before=before_shape,
-            size_after=after_shape,
+            shape_before=before_shape,
+            shape_after=after_shape,
         )
