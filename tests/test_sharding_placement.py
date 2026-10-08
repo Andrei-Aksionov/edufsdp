@@ -22,11 +22,11 @@ class TestShardingPlacement(DistributedTestBase):
         model = copy.deepcopy(self.base_model)
         wrapped = FSDP(model, device_mesh=self.device_mesh)
 
-        for param_name, (_, expected_local_shape) in self.expected_shapes.items():
-            layer_name, attr = param_name.split(".")
-            module_param = getattr(getattr(wrapped.module, layer_name), attr).to_local()
-            assert module_param.shape == expected_local_shape, (
-                f"Rank {self.rank}: {param_name} module resting shape {module_param.shape} != {expected_local_shape}"
+        for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
+            layer_name, attr = parameter_name.split(".")
+            module_parameter = getattr(getattr(wrapped.module, layer_name), attr).to_local()
+            assert module_parameter.shape == expected_local_shape, (
+                f"Rank {self.rank}: {parameter_name} module resting shape {module_parameter.shape} != {expected_local_shape}"
             )
 
     def test_forward_pre_hook_all_gather_shapes(self) -> None:
@@ -49,10 +49,10 @@ class TestShardingPlacement(DistributedTestBase):
         dummy_input = torch.randn(2, 16)
         _ = wrapped(dummy_input)
 
-        for param_name, (global_shape, _) in self.expected_shapes.items():
-            assert gathered_shapes[param_name] == global_shape, (
-                f"Rank {self.rank}: {param_name} gathered shape was "
-                f"{gathered_shapes[param_name]}, expected {global_shape}"
+        for parameter_name, (global_shape, _) in self.expected_shapes.items():
+            assert gathered_shapes[parameter_name] == global_shape, (
+                f"Rank {self.rank}: {parameter_name} gathered shape was "
+                f"{gathered_shapes[parameter_name]}, expected {global_shape}"
             )
 
     def test_forward_post_hook_memory_cleanup_shapes(self) -> None:
@@ -63,12 +63,12 @@ class TestShardingPlacement(DistributedTestBase):
         dummy_input = torch.randn(2, 16)
         _ = wrapped(dummy_input)
 
-        for param_name, (_, expected_local_shape) in self.expected_shapes.items():
-            layer_name, attr = param_name.split(".")
-            module_param = getattr(getattr(wrapped.module, layer_name), attr).to_local()
-            assert module_param.shape == expected_local_shape, (
-                f"Rank {self.rank}: {param_name} post-forward shape was not freed "
-                f"back to {expected_local_shape}, got {module_param.shape}"
+        for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
+            layer_name, attr = parameter_name.split(".")
+            module_parameter = getattr(getattr(wrapped.module, layer_name), attr).to_local()
+            assert module_parameter.shape == expected_local_shape, (
+                f"Rank {self.rank}: {parameter_name} post-forward shape was not freed "
+                f"back to {expected_local_shape}, got {module_parameter.shape}"
             )
 
     def test_fsdp2_dtensor_parity_all_layers(self) -> None:
@@ -81,14 +81,14 @@ class TestShardingPlacement(DistributedTestBase):
         fully_shard(model_native.fc2, mesh=self.device_mesh)
         fully_shard(model_native, mesh=self.device_mesh)
 
-        for param_name, (_, expected_local_shape) in self.expected_shapes.items():
-            layer_name, attr = param_name.split(".")
+        for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
+            layer_name, attr = parameter_name.split(".")
 
             custom_local = getattr(getattr(wrapped_custom.module, layer_name), attr).to_local()
             native_local = getattr(getattr(model_native, layer_name), attr).to_local()
 
             assert custom_local.shape == native_local.shape == expected_local_shape, (
-                f"Rank {self.rank}: {param_name} shape mismatch - Custom {custom_local.shape}, "
+                f"Rank {self.rank}: {parameter_name} shape mismatch - Custom {custom_local.shape}, "
                 f"Native FSDP2 {native_local.shape}, Expected {expected_local_shape}"
             )
 
@@ -116,31 +116,31 @@ class TestShardingPlacement(DistributedTestBase):
         )
 
         # 2. Weight shape, value parity, and grad checks post-forward
-        for param_name, (_, expected_local_shape) in self.expected_shapes.items():
-            layer_name, attr = param_name.split(".")
+        for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
+            layer_name, attr = parameter_name.split(".")
 
-            custom_param = getattr(getattr(wrapped_custom.module, layer_name), attr).to_local()
-            native_param = getattr(getattr(model_native, layer_name), attr).to_local()
+            custom_parameter = getattr(getattr(wrapped_custom.module, layer_name), attr).to_local()
+            native_parameter = getattr(getattr(model_native, layer_name), attr).to_local()
 
             # Shape parity
-            assert custom_param.shape == native_param.shape == expected_local_shape, (
-                f"Rank {self.rank}: Post-forward {param_name} shape mismatch - Custom {custom_param.shape}, "
-                f"Native FSDP2 {native_param.shape}"
+            assert custom_parameter.shape == native_parameter.shape == expected_local_shape, (
+                f"Rank {self.rank}: Post-forward {parameter_name} shape mismatch - Custom {custom_parameter.shape}, "
+                f"Native FSDP2 {native_parameter.shape}"
             )
 
             # Value parity (rested sharded weights unchanged)
             torch.testing.assert_close(
-                custom_param,
-                native_param,
-                msg=f"Rank {self.rank}: Post-forward {param_name} weight values diverged from Native FSDP2",
+                custom_parameter,
+                native_parameter,
+                msg=f"Rank {self.rank}: Post-forward {parameter_name} weight values diverged from Native FSDP2",
             )
 
             # Gradients must be None post-forward
-            assert custom_param.grad is None, (
-                f"Rank {self.rank}: Expected {param_name}.grad to be None on Custom FSDP post-forward"
+            assert custom_parameter.grad is None, (
+                f"Rank {self.rank}: Expected {parameter_name}.grad to be None on Custom FSDP post-forward"
             )
-            assert native_param.grad is None, (
-                f"Rank {self.rank}: Expected {param_name}.grad to be None on Native FSDP2 post-forward"
+            assert native_parameter.grad is None, (
+                f"Rank {self.rank}: Expected {parameter_name}.grad to be None on Native FSDP2 post-forward"
             )
 
     # ---------- Backward step -------------------
@@ -170,30 +170,30 @@ class TestShardingPlacement(DistributedTestBase):
         loss_native.backward()
 
         # 3. Assert local gradient shapes and FSDP2 parity for all sharded layers
-        for param_name, (_, expected_local_shape) in self.expected_shapes.items():
-            layer_name, attr = param_name.split(".")
-            # sharded_param = wrapped_custom.sharded_params[param_name]
-            custom_param = getattr(getattr(wrapped_custom.module, layer_name), attr)
-            custom_local_grad = custom_param.grad.to_local()
+        for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
+            layer_name, attr = parameter_name.split(".")
+            # sharded_parameter = wrapped_custom.sharded_params[parameter_name]
+            custom_parameter = getattr(getattr(wrapped_custom.module, layer_name), attr)
+            custom_local_grad = custom_parameter.grad.to_local()
 
-            # Verify local_param has a gradient populated
+            # Verify local_parameter has a gradient populated
             assert custom_local_grad is not None, (
-                f"Rank {self.rank}: {param_name} local_param.grad was None after loss.backward()"
+                f"Rank {self.rank}: {parameter_name} local_parameter.grad was None after loss.backward()"
             )
 
             # Verify gradient shape matches local parameter shape exactly
             custom_grad_shape = custom_local_grad.shape
             assert custom_grad_shape == expected_local_shape, (
-                f"Rank {self.rank}: {param_name} local grad shape {custom_grad_shape} "
+                f"Rank {self.rank}: {parameter_name} local grad shape {custom_grad_shape} "
                 f"does not match expected local parameter shape {expected_local_shape}"
             )
 
             # Verify local gradient element count parity against Native FSDP2
-            native_param = getattr(getattr(model_native, layer_name), attr)
-            native_local_grad = native_param.grad.to_local()
+            native_parameter = getattr(getattr(model_native, layer_name), attr)
+            native_local_grad = native_parameter.grad.to_local()
 
             assert custom_local_grad.shape == native_local_grad.shape, (
-                f"Rank {self.rank}: {param_name} gradient element shape ({custom_local_grad.shape}) "
+                f"Rank {self.rank}: {parameter_name} gradient element shape ({custom_local_grad.shape}) "
                 f"does not match Native FSDP2 local gradient element shape ({native_local_grad.shape})"
             )
 
@@ -206,7 +206,7 @@ class TestShardingPlacement(DistributedTestBase):
                 )
             except AssertionError as e:
                 raise AssertionError(
-                    f"Rank {self.rank}: {param_name} gradient mismatch against native FSDP2:\n{e}"
+                    f"Rank {self.rank}: {parameter_name} gradient mismatch against native FSDP2:\n{e}"
                 ) from None
 
     def test_pre_backward_all_gather_shapes(self) -> None:
@@ -214,21 +214,21 @@ class TestShardingPlacement(DistributedTestBase):
         model = copy.deepcopy(self.base_model)
         wrapped = FSDP(model, device_mesh=self.device_mesh)
 
-        pre_backward_param_shapes = {}
+        pre_backward_parameter_shapes = {}
 
-        for param_name, (global_shape, _) in self.expected_shapes.items():
-            layer_name, attr = param_name.split(".")
+        for parameter_name, (global_shape, _) in self.expected_shapes.items():
+            layer_name, attr = parameter_name.split(".")
             child_module = getattr(wrapped.module, layer_name)
 
             def make_hook(full_key: str, mod: torch.nn.Module, attribute_name: str):
                 def hook(module: torch.nn.Module, grad_output: tuple) -> None:
                     # Direct attribute lookup gets full_tensor set by EducationalFSDP's BackwardPreHook
                     tensor_val = getattr(mod, attribute_name)
-                    pre_backward_param_shapes[full_key] = tensor_val.shape
+                    pre_backward_parameter_shapes[full_key] = tensor_val.shape
 
                 return hook
 
-            child_module.register_full_backward_pre_hook(make_hook(param_name, child_module, attr))
+            child_module.register_full_backward_pre_hook(make_hook(parameter_name, child_module, attr))
 
         dummy_input = torch.randn(2, 16)
         output = wrapped(dummy_input)
@@ -236,15 +236,15 @@ class TestShardingPlacement(DistributedTestBase):
         loss.backward()
 
         # Assert that all expected parameters were captured and were at global shape during backward
-        assert len(pre_backward_param_shapes) == len(self.expected_shapes), (
-            f"Rank {self.rank}: Captured {len(pre_backward_param_shapes)} parameters, "
+        assert len(pre_backward_parameter_shapes) == len(self.expected_shapes), (
+            f"Rank {self.rank}: Captured {len(pre_backward_parameter_shapes)} parameters, "
             f"expected {len(self.expected_shapes)}"
         )
 
-        for param_name, (global_shape, _) in self.expected_shapes.items():
-            assert pre_backward_param_shapes[param_name] == global_shape, (
-                f"Rank {self.rank}: {param_name} shape during backward was "
-                f"{pre_backward_param_shapes[param_name]}, expected global shape {global_shape}"
+        for parameter_name, (global_shape, _) in self.expected_shapes.items():
+            assert pre_backward_parameter_shapes[parameter_name] == global_shape, (
+                f"Rank {self.rank}: {parameter_name} shape during backward was "
+                f"{pre_backward_parameter_shapes[parameter_name]}, expected global shape {global_shape}"
             )
 
     def test_post_backward_memory_cleanup_and_sharded_grads(self) -> None:
@@ -257,23 +257,23 @@ class TestShardingPlacement(DistributedTestBase):
         loss = output.sum()
         loss.backward()
 
-        for param_name, (_, expected_local_shape) in self.expected_shapes.items():
-            layer_name, attr = param_name.split(".")
-            module_param = getattr(getattr(wrapped.module, layer_name), attr)
+        for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
+            layer_name, attr = parameter_name.split(".")
+            module_parameter = getattr(getattr(wrapped.module, layer_name), attr)
 
             # 1. Weight memory must be freed back to local sharded shape on the actual module attribute
-            assert module_param.to_local().shape == expected_local_shape, (
-                f"Rank {self.rank}: Post-backward {param_name} weight shape was not freed "
-                f"back to {expected_local_shape}, got {module_param.to_local().shape}"
+            assert module_parameter.to_local().shape == expected_local_shape, (
+                f"Rank {self.rank}: Post-backward {parameter_name} weight shape was not freed "
+                f"back to {expected_local_shape}, got {module_parameter.to_local().shape}"
             )
 
             # 2. Gradient must exist directly on the module parameter attribute and match the sharded shape
-            assert module_param.grad.to_local() is not None, (
-                f"Rank {self.rank}: {param_name}.grad was None on module parameter post-backward"
+            assert module_parameter.grad.to_local() is not None, (
+                f"Rank {self.rank}: {parameter_name}.grad was None on module parameter post-backward"
             )
-            assert module_param.grad.to_local().shape == expected_local_shape, (
-                f"Rank {self.rank}: Post-backward {param_name}.grad shape was "
-                f"{module_param.grad.to_local().shape}, expected sharded shape {expected_local_shape}"
+            assert module_parameter.grad.to_local().shape == expected_local_shape, (
+                f"Rank {self.rank}: Post-backward {parameter_name}.grad shape was "
+                f"{module_parameter.grad.to_local().shape}, expected sharded shape {expected_local_shape}"
             )
 
     def test_fsdp2_dtensor_parity_post_backward(self) -> None:
@@ -297,45 +297,49 @@ class TestShardingPlacement(DistributedTestBase):
         loss_native = out_native.sum()
         loss_native.backward()
 
-        for param_name, (_, expected_local_shape) in self.expected_shapes.items():
-            layer_name, attr = param_name.split(".")
+        for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
+            layer_name, attr = parameter_name.split(".")
 
-            custom_param = getattr(getattr(wrapped_custom.module, layer_name), attr)
-            native_param = getattr(getattr(model_native, layer_name), attr)
+            custom_parameter = getattr(getattr(wrapped_custom.module, layer_name), attr)
+            native_parameter = getattr(getattr(model_native, layer_name), attr)
 
             # 1. Weight shape & value parity post-backward (restored sharded state)
-            custom_weight_local = custom_param.to_local()
-            native_weight_local = native_param.to_local()
+            custom_weight_local = custom_parameter.to_local()
+            native_weight_local = native_parameter.to_local()
 
             assert custom_weight_local.shape == native_weight_local.shape == expected_local_shape, (
-                f"Rank {self.rank}: Post-backward {param_name} weight shape mismatch - Custom "
+                f"Rank {self.rank}: Post-backward {parameter_name} weight shape mismatch - Custom "
                 f"{custom_weight_local.shape}, Native FSDP2 {native_weight_local.shape}"
             )
 
             torch.testing.assert_close(
                 custom_weight_local,
                 native_weight_local,
-                msg=f"Rank {self.rank}: Post-backward {param_name} weight values diverged from Native FSDP2",
+                msg=f"Rank {self.rank}: Post-backward {parameter_name} weight values diverged from Native FSDP2",
             )
 
             # 2. Gradient existence & shape checks
-            assert custom_param.grad is not None, (
-                f"Rank {self.rank}: {param_name}.grad was None on Custom FSDP post-backward"
+            assert custom_parameter.grad is not None, (
+                f"Rank {self.rank}: {parameter_name}.grad was None on Custom FSDP post-backward"
             )
-            assert native_param.grad is not None, (
-                f"Rank {self.rank}: {param_name}.grad was None on Native FSDP2 post-backward"
+            assert native_parameter.grad is not None, (
+                f"Rank {self.rank}: {parameter_name}.grad was None on Native FSDP2 post-backward"
             )
 
             # For Native FSDP2 DTensors, grad is also a DTensor/tensor whose local shard matches sharded_shape
             custom_grad_local = (
-                custom_param.grad.to_local() if hasattr(custom_param.grad, "to_local") else custom_param.grad
+                custom_parameter.grad.to_local()
+                if hasattr(custom_parameter.grad, "to_local")
+                else custom_parameter.grad
             )
             native_grad_local = (
-                native_param.grad.to_local() if hasattr(native_param.grad, "to_local") else native_param.grad
+                native_parameter.grad.to_local()
+                if hasattr(native_parameter.grad, "to_local")
+                else native_parameter.grad
             )
 
             assert custom_grad_local.shape == native_grad_local.shape == expected_local_shape, (
-                f"Rank {self.rank}: Post-backward {param_name}.grad shape mismatch - Custom "
+                f"Rank {self.rank}: Post-backward {parameter_name}.grad shape mismatch - Custom "
                 f"{custom_grad_local.shape}, Native FSDP2 {native_grad_local.shape}"
             )
 
@@ -343,5 +347,5 @@ class TestShardingPlacement(DistributedTestBase):
             torch.testing.assert_close(
                 custom_grad_local,
                 native_grad_local,
-                msg=f"Rank {self.rank}: Post-backward {param_name}.grad values diverged from Native FSDP2",
+                msg=f"Rank {self.rank}: Post-backward {parameter_name}.grad values diverged from Native FSDP2",
             )

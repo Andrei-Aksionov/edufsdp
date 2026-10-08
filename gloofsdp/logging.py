@@ -110,9 +110,9 @@ class RankLogger:
 
             dist.barrier()
 
-    def _extract_layer_prefix(self, param_name: str) -> str:
-        parts = param_name.split(".")
-        return parts[0] if len(parts) > 1 else param_name
+    def _extract_layer_prefix(self, parameter_name: str) -> str:
+        parts = parameter_name.split(".")
+        return parts[0] if len(parts) > 1 else parameter_name
 
     def reset_step(self) -> None:
         """Resets layer boundary tracking at training step boundaries."""

@@ -46,7 +46,7 @@ class ShardedParameter:
         self,
         fqn: str,
         module: nn.Module,
-        param: nn.Parameter,
+        parameter: nn.Parameter,
         device_mesh: DeviceMesh,
     ) -> None:
         """
@@ -55,7 +55,7 @@ class ShardedParameter:
         Args:
             fqn (str): Fully qualified parameter name (e.g., 'layer1.weight').
             module (nn.Module): Parent PyTorch module owning this parameter.
-            param (nn.Parameter): Unsharded source parameter to split across ranks.
+            parameter (nn.Parameter): Unsharded source parameter to split across ranks.
             device_mesh (DeviceMesh): PyTorch DeviceMesh defining rank layout.
         """
         self.fqn = fqn
@@ -72,10 +72,10 @@ class ShardedParameter:
         # - Ensures `sharded_dtensor` is created as a clean leaf node (grad_fn=None).
         # ---------------------------------------------------------------------
         with torch.no_grad():
-            sharded_dtensor = distribute_tensor(param.data, device_mesh=self.device_mesh, placements=[Shard(dim=0)])
+            sharded_dtensor = distribute_tensor(parameter.data, device_mesh=self.device_mesh, placements=[Shard(dim=0)])
             self.dtensor = nn.Parameter(
                 sharded_dtensor,
-                requires_grad=param.requires_grad,
+                requires_grad=parameter.requires_grad,
             )
 
         # 2. Mount the DTensor Parameter directly on the target module attribute
@@ -111,7 +111,7 @@ class ShardedParameter:
         """
         Attaches the full gathered tensor to the parent module attribute.
 
-        Standard `setattr(module, param_name, full_tensor)` invokes PyTorch's
+        Standard `setattr(module, parameter_name, full_tensor)` invokes PyTorch's
         `nn.Module.__setattr__`, which rejects assigning a plain `torch.Tensor`
         to an existing `nn.Parameter` attribute.
 

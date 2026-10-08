@@ -34,13 +34,13 @@ class StateDictManager:
         """
         sharded_map: dict[str, ShardedParameter] = {}
 
-        for mod_name, submodule in module.named_modules():
+        for module_name, submodule in module.named_modules():
             # Check if this submodule holds any registered sharded parameter objects
-            if hasattr(submodule, "_fsdp_sharded_params"):
-                for p_name, param_wrapper in submodule._fsdp_sharded_params.items():
+            if hasattr(submodule, "_fsdp_sharded_parameters"):
+                for parameter_name, parameter_wrapper in submodule._fsdp_sharded_parameters.items():
                     # Construct fully qualified parameter name (e.g., 'layer1.weight')
-                    full_name = f"{mod_name}.{p_name}" if mod_name else p_name
-                    sharded_map[full_name] = param_wrapper
+                    full_name = f"{module_name}.{parameter_name}" if module_name else parameter_name
+                    sharded_map[full_name] = parameter_wrapper
 
         return sharded_map
 

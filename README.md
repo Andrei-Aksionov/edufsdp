@@ -55,13 +55,13 @@ While PyTorch's native `FullyShardedDataParallel` (FSDP) is optimized for high-t
 │ Backward Pass (Autograd)                                                      │
 │  1. Compute Grad   ──> Un-sharded gradient G_full computed (Partial)          │
 │  2. BackwardHook   ──> Reduce-scatter G_full across mesh -> G_shard           │
-│  3. Gradient Step  ──> Attach G_shard to local_param.grad                     │
+│  3. Gradient Step  ──> Attach G_shard to local_parameter.grad                     │
 └──────────────────────────────────┬────────────────────────────────────────────┘
 │
 ▼
 ┌────────────────────────────────────────────────────────┐
 │                    Optimizer Step                      │
-│    Optimizer updates persistent local_param shards     │
+│    Optimizer updates persistent local_parameter shards     │
 └────────────────────────────────────────────────────────┘
 
 ```

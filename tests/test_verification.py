@@ -43,8 +43,8 @@ def test_run_verification_suite():
 
     # 1. Instantiate reference model on Rank 0 and broadcast to ensure 100% weight alignment
     base_model = MLP().to(device)
-    for param in base_model.parameters():
-        dist.broadcast(param.data, src=0)
+    for parameter in base_model.parameters():
+        dist.broadcast(parameter.data, src=0)
 
     # Make deepcopies so both FSDP implementations start from identical parameters
     edu_raw_model = copy.deepcopy(base_model)

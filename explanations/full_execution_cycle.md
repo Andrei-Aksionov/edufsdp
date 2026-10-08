@@ -5,9 +5,9 @@
 
   [ 1. Forward Pre-Hook Fires ]
   │
-  ├──► Calls `dtensor_param.gather()`
+  ├──► Calls `dtensor_parameter.gather()`
   │      │
-  │      └──► Executes `FSDPAllGatherFunction.apply(local_param)`
+  │      └──► Executes `FSDPAllGatherFunction.apply(local_parameter)`
   │             │
   │             ├──► 1. All-Gather: DTensor[Shard(0)] -> DTensor[Replicate()]
   │             ├──► 2. Inject autograd node: <FSDPAllGatherFunctionBackward>
@@ -19,9 +19,9 @@
   │
   [ 3. Forward Post-Hook Fires ]
   │
-  └──► Calls `dtensor_param.free()`
+  └──► Calls `dtensor_parameter.free()`
          │
-         └──► Swaps module attribute back to `local_param` (Frees `full_tensor` host RAM)
+         └──► Swaps module attribute back to `local_parameter` (Frees `full_tensor` host RAM)
 
 
                        =======================================
@@ -46,7 +46,7 @@
          └──► 4. Return `sharded_grad`
                 │
                 └──► PyTorch Autograd automatically assigns `sharded_grad`
-                     directly to `local_param.grad`
+                     directly to `local_parameter.grad`
 
 ```
 
@@ -81,7 +81,7 @@
            │
            ├──► 1. Takes `grad_output` (Full Gradient)
            ├──► 2. Runs Reduce-Scatter ──► Produces `sharded_grad`
-           ├──► 3. Assigns `sharded_grad` to `local_param.grad`
+           ├──► 3. Assigns `sharded_grad` to `local_parameter.grad`
            └──► 4. Frees Full Weight $W$ again
 
 ```

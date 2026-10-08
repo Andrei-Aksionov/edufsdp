@@ -93,26 +93,26 @@ class FSDP(nn.Module):
             self._wrap_module_tree(child_module, prefix=child_prefix)
 
         # Dictionary attached to submodule storing local parameter wrappers
-        module._fsdp_sharded_params = {}
+        module._fsdp_sharded_parameters = {}
 
         # 2. Process parameters owned directly by this module instance
-        for param_name, param in list(module.named_parameters(recurse=False)):
-            full_name = f"{prefix}{param_name}" if prefix else param_name
+        for parameter_name, parameter in list(module.named_parameters(recurse=False)):
+            full_name = f"{prefix}{parameter_name}" if prefix else parameter_name
 
-            sharded_param = ShardedParameter(
+            sharded_parameter = ShardedParameter(
                 fqn=full_name,
                 module=module,
-                param=param,
+                parameter=parameter,
                 device_mesh=self.device_mesh,
             )
 
-            module._fsdp_sharded_params[param_name] = sharded_param
+            module._fsdp_sharded_parameters[parameter_name] = sharded_parameter
 
             # 3. Attach forward & backward hooks to trigger all_gather and free
-            module.register_forward_pre_hook(ForwardPreHook(sharded_param))
-            module.register_forward_hook(ForwardPostHook(sharded_param))
-            module.register_full_backward_pre_hook(BackwardPreHook(sharded_param))
-            module.register_full_backward_hook(BackwardPostHook(sharded_param))
+            module.register_forward_pre_hook(ForwardPreHook(sharded_parameter))
+            module.register_forward_hook(ForwardPostHook(sharded_parameter))
+            module.register_full_backward_pre_hook(BackwardPreHook(sharded_parameter))
+            module.register_full_backward_hook(BackwardPostHook(sharded_parameter))
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Delegates forward pass execution to the inner wrapped module."""

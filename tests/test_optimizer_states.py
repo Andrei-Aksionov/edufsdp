@@ -62,27 +62,27 @@ class TestOptimizerStates(DistributedTestBase):
         optimizer_native.step()
 
         # 4. Verify Custom FSDP state presence & shape parity against Native FSDP2
-        for param_name, (_, expected_local_shape) in self.expected_shapes.items():
-            layer_name, attr = param_name.split(".")
+        for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
+            layer_name, attr = parameter_name.split(".")
 
-            custom_param = getattr(getattr(wrapped_custom.module, layer_name), attr)
-            native_param = getattr(getattr(model_native, layer_name), attr)
+            custom_parameter = getattr(getattr(wrapped_custom.module, layer_name), attr)
+            native_parameter = getattr(getattr(model_native, layer_name), attr)
 
             # Ensure parameters are tracked inside optimizer state dicts
-            assert custom_param in optimizer_custom.state, (
-                f"Rank {self.rank}: {param_name} was not populated in custom optimizer.state"
+            assert custom_parameter in optimizer_custom.state, (
+                f"Rank {self.rank}: {parameter_name} was not populated in custom optimizer.state"
             )
-            assert native_param in optimizer_native.state, (
-                f"Rank {self.rank}: {param_name} was not populated in native optimizer.state"
+            assert native_parameter in optimizer_native.state, (
+                f"Rank {self.rank}: {parameter_name} was not populated in native optimizer.state"
             )
 
-            custom_state = optimizer_custom.state[custom_param]
-            native_state = optimizer_native.state[native_param]
+            custom_state = optimizer_custom.state[custom_parameter]
+            native_state = optimizer_native.state[native_parameter]
 
             # Verify Adam keys exist
             for state_key in ("exp_avg", "exp_avg_sq"):
                 assert state_key in custom_state, (
-                    f"Rank {self.rank}: Key '{state_key}' missing from custom optimizer state for {param_name}"
+                    f"Rank {self.rank}: Key '{state_key}' missing from custom optimizer state for {parameter_name}"
                 )
 
                 custom_tensor = (
@@ -98,6 +98,6 @@ class TestOptimizerStates(DistributedTestBase):
 
                 # Assert shape matches expected local sharded shape and native FSDP shape
                 assert custom_tensor.shape == native_tensor.shape == expected_local_shape, (
-                    f"Rank {self.rank}: {param_name} state '{state_key}' shape mismatch - Custom "
+                    f"Rank {self.rank}: {parameter_name} state '{state_key}' shape mismatch - Custom "
                     f"{custom_tensor.shape}, Native {native_tensor.shape}, Expected {expected_local_shape}"
                 )

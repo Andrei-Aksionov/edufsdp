@@ -24,11 +24,11 @@ class TestDTensorConsistency(DistributedTestBase):
         wrapped = FSDP(model, device_mesh=self.device_mesh)
 
         # 1. Check resting state before forward
-        for param_name in self.expected_shapes:
-            layer_name, attr = param_name.split(".")
-            module_param = getattr(getattr(wrapped.module, layer_name), attr)
-            assert isinstance(module_param, DTensor), (
-                f"Rank {self.rank}: Resting parameter {param_name} expected DTensor, got {type(module_param)}"
+        for parameter_name in self.expected_shapes:
+            layer_name, attr = parameter_name.split(".")
+            module_parameter = getattr(getattr(wrapped.module, layer_name), attr)
+            assert isinstance(module_parameter, DTensor), (
+                f"Rank {self.rank}: Resting parameter {parameter_name} expected DTensor, got {type(module_parameter)}"
             )
 
         # 2. Run Forward Pass
@@ -36,11 +36,11 @@ class TestDTensorConsistency(DistributedTestBase):
         _ = wrapped(dummy_input)
 
         # 3. Check resting state post-forward (should be resharded back to resting DTensor)
-        for param_name in self.expected_shapes:
-            layer_name, attr = param_name.split(".")
-            module_param = getattr(getattr(wrapped.module, layer_name), attr)
-            assert isinstance(module_param, DTensor), (
-                f"Rank {self.rank}: Post-forward parameter {param_name} expected DTensor, got {type(module_param)}"
+        for parameter_name in self.expected_shapes:
+            layer_name, attr = parameter_name.split(".")
+            module_parameter = getattr(getattr(wrapped.module, layer_name), attr)
+            assert isinstance(module_parameter, DTensor), (
+                f"Rank {self.rank}: Post-forward parameter {parameter_name} expected DTensor, got {type(module_parameter)}"
             )
 
     def test_dtensor_type_lifecycle_backward(self) -> None:
@@ -53,19 +53,19 @@ class TestDTensorConsistency(DistributedTestBase):
         loss = output.sum()
         loss.backward()
 
-        for param_name in self.expected_shapes:
-            layer_name, attr = param_name.split(".")
-            module_param = getattr(getattr(wrapped.module, layer_name), attr)
+        for parameter_name in self.expected_shapes:
+            layer_name, attr = parameter_name.split(".")
+            module_parameter = getattr(getattr(wrapped.module, layer_name), attr)
 
             # 1. Weight parameter type check
-            assert isinstance(module_param, DTensor), (
-                f"Rank {self.rank}: Post-backward {param_name} weight expected DTensor, got {type(module_param)}"
+            assert isinstance(module_parameter, DTensor), (
+                f"Rank {self.rank}: Post-backward {parameter_name} weight expected DTensor, got {type(module_parameter)}"
             )
 
             # 2. Gradient parameter type check
-            assert module_param.grad is not None, f"Rank {self.rank}: {param_name}.grad is None"
-            assert isinstance(module_param.grad, DTensor), (
-                f"Rank {self.rank}: Post-backward {param_name}.grad expected DTensor, got {type(module_param.grad)}"
+            assert module_parameter.grad is not None, f"Rank {self.rank}: {parameter_name}.grad is None"
+            assert isinstance(module_parameter.grad, DTensor), (
+                f"Rank {self.rank}: Post-backward {parameter_name}.grad expected DTensor, got {type(module_parameter.grad)}"
             )
 
     def test_dtensor_parity_against_native_fsdp2(self) -> None:
@@ -87,44 +87,46 @@ class TestDTensorConsistency(DistributedTestBase):
         out_native = model_native(dummy_input)
         out_native.sum().backward()
 
-        for param_name, (_, expected_local_shape) in self.expected_shapes.items():
-            layer_name, attr = param_name.split(".")
+        for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
+            layer_name, attr = parameter_name.split(".")
 
-            custom_param = getattr(getattr(wrapped_custom.module, layer_name), attr)
-            native_param = getattr(getattr(model_native, layer_name), attr)
+            custom_parameter = getattr(getattr(wrapped_custom.module, layer_name), attr)
+            native_parameter = getattr(getattr(model_native, layer_name), attr)
 
             # 1. Parameter Type Parity (Both must be DTensors)
-            assert isinstance(custom_param, DTensor), (
-                f"Rank {self.rank}: Custom {param_name} expected DTensor, got {type(custom_param)}"
+            assert isinstance(custom_parameter, DTensor), (
+                f"Rank {self.rank}: Custom {parameter_name} expected DTensor, got {type(custom_parameter)}"
             )
-            assert isinstance(native_param, DTensor), (
-                f"Rank {self.rank}: Native {param_name} expected DTensor, got {type(native_param)}"
+            assert isinstance(native_parameter, DTensor), (
+                f"Rank {self.rank}: Native {parameter_name} expected DTensor, got {type(native_parameter)}"
             )
 
             # 2. Placement & Mesh Parity
-            assert custom_param.placements == native_param.placements, (
-                f"Rank {self.rank}: {param_name} placement mismatch - Custom {custom_param.placements}, "
-                f"Native {native_param.placements}"
+            assert custom_parameter.placements == native_parameter.placements, (
+                f"Rank {self.rank}: {parameter_name} placement mismatch - Custom {custom_parameter.placements}, "
+                f"Native {native_parameter.placements}"
             )
-            assert custom_param.device_mesh == native_param.device_mesh, (
-                f"Rank {self.rank}: {param_name} device_mesh mismatch - Custom {custom_param.device_mesh}, "
-                f"Native {native_param.device_mesh}"
+            assert custom_parameter.device_mesh == native_parameter.device_mesh, (
+                f"Rank {self.rank}: {parameter_name} device_mesh mismatch - Custom {custom_parameter.device_mesh}, "
+                f"Native {native_parameter.device_mesh}"
             )
 
             # 3. Local Shard Shape Parity
-            assert custom_param.to_local().shape == native_param.to_local().shape == expected_local_shape, (
-                f"Rank {self.rank}: {param_name} local shape mismatch - Custom {custom_param.to_local().shape}, "
-                f"Native {native_param.to_local().shape}"
+            assert custom_parameter.to_local().shape == native_parameter.to_local().shape == expected_local_shape, (
+                f"Rank {self.rank}: {parameter_name} local shape mismatch - Custom {custom_parameter.to_local().shape}, "
+                f"Native {native_parameter.to_local().shape}"
             )
 
             # 4. Gradient Type & Local Shape Parity
-            assert isinstance(custom_param.grad, DTensor), (
-                f"Rank {self.rank}: Custom {param_name}.grad expected DTensor, got {type(custom_param.grad)}"
+            assert isinstance(custom_parameter.grad, DTensor), (
+                f"Rank {self.rank}: Custom {parameter_name}.grad expected DTensor, got {type(custom_parameter.grad)}"
             )
-            assert isinstance(native_param.grad, DTensor), (
-                f"Rank {self.rank}: Native {param_name}.grad expected DTensor, got {type(native_param.grad)}"
+            assert isinstance(native_parameter.grad, DTensor), (
+                f"Rank {self.rank}: Native {parameter_name}.grad expected DTensor, got {type(native_parameter.grad)}"
             )
-            assert custom_param.grad.to_local().shape == native_param.grad.to_local().shape == expected_local_shape, (
-                f"Rank {self.rank}: {param_name}.grad local shape mismatch - Custom {custom_param.grad.to_local().shape}, "
-                f"Native {native_param.grad.to_local().shape}"
+            assert (
+                custom_parameter.grad.to_local().shape == native_parameter.grad.to_local().shape == expected_local_shape
+            ), (
+                f"Rank {self.rank}: {parameter_name}.grad local shape mismatch - Custom {custom_parameter.grad.to_local().shape}, "
+                f"Native {native_parameter.grad.to_local().shape}"
             )

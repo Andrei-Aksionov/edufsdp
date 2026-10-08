@@ -41,8 +41,8 @@ def test_state_dict_compatibility():
 
     # 1. Base Model Initialization & Weight Sync
     base_model = ToyModel().to(device)
-    for param in base_model.parameters():
-        dist.broadcast(param.data, src=0)
+    for parameter in base_model.parameters():
+        dist.broadcast(parameter.data, src=0)
 
     # Wrap with EducationalFSDP and Native FSDP
     edu_model = FSDP(copy.deepcopy(base_model), device_mesh=mesh)
