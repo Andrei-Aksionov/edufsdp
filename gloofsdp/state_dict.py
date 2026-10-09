@@ -41,7 +41,7 @@ class StateDictManager:
             state_dict_type: Target format (`StateDictType.LOCAL` or `StateDictType.FULL`).
 
         Returns:
-            dict[str, torch.Tensor]: Map of parameter FQNs to local shards or full tensors.
+            Map of parameter FQNs to local shards or full tensors.
         """
         state_dict: dict[str, torch.Tensor] = {}
 

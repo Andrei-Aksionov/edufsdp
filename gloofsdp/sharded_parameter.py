@@ -53,10 +53,10 @@ class ShardedParameter:
         Initializes parameter sharding state and installs the sharded DTensor onto the module.
 
         Args:
-            fqn (str): Fully qualified parameter name (e.g., 'layer1.weight').
-            module (nn.Module): Parent PyTorch module owning this parameter.
-            parameter (nn.Parameter): Unsharded source parameter to split across ranks.
-            device_mesh (DeviceMesh): PyTorch DeviceMesh defining rank layout.
+            fqn: Fully qualified parameter name (e.g., 'layer1.weight').
+            module: Parent PyTorch module owning this parameter.
+            parameter: Unsharded source parameter to split across ranks.
+            device_mesh: PyTorch DeviceMesh defining rank layout.
         """
         self.fqn = fqn
         self.parameter_name = fqn.split(".")[-1]
@@ -120,7 +120,7 @@ class ShardedParameter:
         contiguous tensors during forward and backward computations.
 
         Args:
-            full_tensor (torch.Tensor): Unsharded full-size tensor gathered across ranks.
+            Unsharded full-size tensor gathered across ranks.
         """
         self._gathered_tensor = full_tensor
         self.module.__dict__[self.parameter_name] = full_tensor

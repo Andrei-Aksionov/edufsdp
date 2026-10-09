@@ -62,8 +62,8 @@ class FSDP(nn.Module):
     and attaching custom autograd hooks to manage collective operations.
 
     Args:
-        module (nn.Module): Target PyTorch module to shard and wrap.
-        device_mesh (DeviceMesh): PyTorch DeviceMesh defining process rank layout.
+        module: Target PyTorch module to shard and wrap.
+        device_mesh: PyTorch DeviceMesh defining process rank layout.
     """
 
     def __init__(self, module: nn.Module, device_mesh: DeviceMesh) -> None:
@@ -84,8 +84,8 @@ class FSDP(nn.Module):
           3. Attaches forward and backward execution hooks directly to the submodule.
 
         Args:
-            module (nn.Module): Current module instance in the traversal.
-            prefix (str): Accumulated dot-separated FQN path (e.g., 'layer1.').
+            module: Current module instance in the traversal.
+            prefix: Accumulated dot-separated FQN path (e.g., 'layer1.').
         """
         # 1. Post-order recursion: process child submodules first
         for child_name, child_module in module.named_children():
@@ -141,10 +141,10 @@ class FSDP(nn.Module):
         Exports module state dict in either `LOCAL` (sharded) or `FULL` (unsharded) format.
 
         Args:
-            state_dict_type (StateDictType): Target format (StateDictType.LOCAL or StateDictType.FULL).
+            state_dict_type: Target format (StateDictType.LOCAL or StateDictType.FULL).
 
         Returns:
-            Dict[str, torch.Tensor]: Map of parameter FQNs to tensor shards or gathered full tensors.
+            Map of parameter FQNs to tensor shards or gathered full tensors.
         """
         return StateDictManager.get_state_dict(self.module, self.sharded_parameters, state_dict_type)
 
@@ -157,7 +157,7 @@ class FSDP(nn.Module):
         Loads state dictionary checkpoint into sharded parameters.
 
         Args:
-            state_dict (Dict[str, torch.Tensor]): Checkpoint mapping parameter names to tensors.
-            state_dict_type (StateDictType): Format of incoming state_dict (`LOCAL` or `FULL`).
+            state_dict: Checkpoint mapping parameter names to tensors.
+            state_dict_type: Format of incoming state_dict (`LOCAL` or `FULL`).
         """
         StateDictManager.load_state_dict(self.module, self.sharded_parameters, state_dict, state_dict_type)

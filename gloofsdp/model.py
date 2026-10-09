@@ -26,9 +26,9 @@ class MLP(nn.Module):
     Dimensions are selected to work with [2, 3, 4, 6] ranks.
 
     Args:
-        input_dim (int): Feature dimension of input tensor. Defaults to 18.
-        hidden_dim (int): Hidden representation dimension. Defaults to 24.
-        output_dim (int): Dimension of output predictions. Defaults to 12.
+        input_dim: Feature dimension of input tensor. Defaults to 18.
+        hidden_dim: Hidden representation dimension. Defaults to 24.
+        output_dim: Dimension of output predictions. Defaults to 12.
     """
 
     def __init__(self, input_dim: int = 18, hidden_dim: int = 24, output_dim: int = 12) -> None:
@@ -42,10 +42,10 @@ class MLP(nn.Module):
         Executes forward pass.
 
         Args:
-            x (torch.Tensor): Input batch tensor of shape `(batch_size, input_dim)`.
+            x: Input batch tensor of shape `(batch_size, input_dim)`.
 
         Returns:
-            torch.Tensor: Output tensor of shape `(batch_size, output_dim)`.
+            Output tensor of shape `(batch_size, output_dim)`.
         """
         x = self.layer1(x)
         x = self.relu(x)

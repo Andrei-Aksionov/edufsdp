@@ -99,6 +99,10 @@ class RankLogger:
         self.last_layer_prefix: str | None = None
         self.log_hooks: bool = False
 
+    def add_prefix_rank(self, message: str) -> str:
+        """Formats string with rank prefix."""
+        return f"[Rank {self.rank}/{self.world_size}] {message}"
+
     def log(self, message: str) -> None:
         """Logs message with rank prefix."""
         print(self.add_prefix_rank(message), flush=True)
@@ -123,10 +127,6 @@ class RankLogger:
     def log_divider(self, symbol: str = "#", width: int = 30) -> None:
         """Logs a visual divider line on Rank 0."""
         self.log_rank0(f"\n{symbol * width}")
-
-    def add_prefix_rank(self, message: str) -> str:
-        """Formats string with rank prefix."""
-        return f"[Rank {self.rank}/{self.world_size}] {message}"
 
     def log_ordered(self, message: str, add_rank_info: bool = True) -> None:
         """Guarantees sequentially ordered stdout across all ranks via process barriers."""

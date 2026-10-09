@@ -58,7 +58,7 @@ class FSDPAllGatherFunction(torch.autograd.Function):
             sharded_parameter: Parameter container holding distributed topology and device mesh.
 
         Returns:
-            torch.Tensor: The reconstructed global parameter tensor assembled via All-Gather.
+            The reconstructed global parameter tensor assembled via All-Gather.
         """
         ctx.parameter = sharded_parameter
 
@@ -96,7 +96,7 @@ class FSDPAllGatherFunction(torch.autograd.Function):
             grad_output: Incoming full-shape un-reduced gradient calculated during backward pass.
 
         Returns:
-            tuple[torch.Tensor, None]: Rank-local sharded gradient tensor scaled by world size,
+            Rank-local sharded gradient tensor scaled by world size,
             and None matching non-tensor metadata argument from forward pass.
         """
         parameter: ShardedParameter = ctx.parameter
