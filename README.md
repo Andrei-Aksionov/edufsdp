@@ -30,9 +30,7 @@ While PyTorch's native `FullyShardedDataParallel` (FSDP) is optimized for high-t
 
 ## 🛠 Execution Lifecycle
 
-```
-
-```
+```text
 
    ┌────────────────────────────────────────────────────────┐
    │                   Parameter Sharding                   │
@@ -40,8 +38,6 @@ While PyTorch's native `FullyShardedDataParallel` (FSDP) is optimized for high-t
    └───────────────────────────┬────────────────────────────┘
                                │
                                ▼
-
-```
 
 ┌───────────────────────────────────────────────────────────────────────────────┐
 │ Forward Pass (Per Submodule)                                                  │
@@ -113,8 +109,6 @@ output = model(torch.randn(8, 64))
 loss = output.sum()
 loss.backward()
 optimizer.step()
-
-```
 
 ```
 

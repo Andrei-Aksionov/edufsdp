@@ -149,7 +149,7 @@ class RankLogger:
         prefix, _, _ = parameter_name.partition(".")
         return prefix if prefix else parameter_name
 
-    def reset_step(self) -> None:
+    def reset_layer_prefix(self) -> None:
         """Resets layer boundary tracking at training step boundaries."""
         self.last_layer_prefix = None
 
