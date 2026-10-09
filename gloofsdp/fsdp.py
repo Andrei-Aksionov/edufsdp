@@ -118,6 +118,21 @@ class FSDP(nn.Module):
         """Delegates forward pass execution to the inner wrapped module."""
         return self.module(*args, **kwargs)
 
+    @property
+    def sharded_parameters(self) -> dict[str, ShardedParameter]:
+        """Dynamically collects all ShardedParameter objects across submodules by searching through module attributes."""
+        sharded_map: dict[str, ShardedParameter] = {}
+
+        for module_name, submodule in self.module.named_modules():
+            # Check if this submodule holds any registered sharded parameter objects
+            if hasattr(submodule, "_fsdp_sharded_parameters"):
+                for parameter_name, parameter_wrapper in submodule._fsdp_sharded_parameters.items():
+                    # Construct fully qualified parameter name (e.g., 'layer1.weight')
+                    full_name = f"{module_name}.{parameter_name}" if module_name else parameter_name
+                    sharded_map[full_name] = parameter_wrapper
+
+        return sharded_map
+
     def state_dict(
         self,
         state_dict_type: StateDictType = StateDictType.LOCAL,
@@ -131,7 +146,7 @@ class FSDP(nn.Module):
         Returns:
             Dict[str, torch.Tensor]: Map of parameter FQNs to tensor shards or gathered full tensors.
         """
-        return StateDictManager.get_state_dict(self.module, state_dict_type)
+        return StateDictManager.get_state_dict(self.module, self.sharded_parameters, state_dict_type)
 
     def load_state_dict(
         self,
@@ -145,4 +160,4 @@ class FSDP(nn.Module):
             state_dict (Dict[str, torch.Tensor]): Checkpoint mapping parameter names to tensors.
             state_dict_type (StateDictType): Format of incoming state_dict (`LOCAL` or `FULL`).
         """
-        StateDictManager.load_state_dict(self.module, state_dict, state_dict_type)
+        StateDictManager.load_state_dict(self.module, self.sharded_parameters, state_dict, state_dict_type)
