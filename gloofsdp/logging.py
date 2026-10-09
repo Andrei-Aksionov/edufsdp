@@ -18,14 +18,33 @@ class ASCIIVisualizer:
     full_char = "█"
     empty_char = "░"
 
-    @classmethod
-    def render_shard_bar(
-        cls,
-        rank: int,
-        world_size: int,
-        is_gathered: bool,
-        bar_width: int = 16,
-    ) -> str:
+    def __init__(self, bar_width: int = 16, rank: int = 0, world_size: int = 1) -> None:
+        self.bar_width = bar_width
+        self.rank = rank
+        self.world_size = world_size
+
+        self.gathered_bar = f"[{self.full_char * self.bar_width}]"
+        self.non_gathered_bar = self._prerender_shard_bar()
+
+    def _prerender_shard_bar(self) -> str:
+        if self.world_size <= 0 or self.bar_width <= 0:
+            return f"[{self.empty_char * self.bar_width}]"
+
+        # Calculate character slots for this rank's shard slice
+        slot_size = self.bar_width / self.world_size
+        start_slot = int(round(self.rank * slot_size))
+        end_slot = int(round((self.rank + 1) * slot_size))
+        # Clamp slots to bounds
+        start_slot = max(0, min(self.bar_width, start_slot))
+        end_slot = max(start_slot, min(self.bar_width, end_slot))
+
+        left_pad = self.empty_char * start_slot
+        shard_segment = self.full_char * (end_slot - start_slot)
+        right_pad = self.empty_char * (self.bar_width - end_slot)
+
+        return f"[{left_pad}{shard_segment}{right_pad}]"
+
+    def render_shard_bar(self, is_gathered: bool) -> str:
         """Renders a single fixed-width ASCII bar representing memory layout for a rank.
 
         Examples (world_size=2, bar_width=16):
@@ -33,55 +52,22 @@ class ASCIIVisualizer:
         - Rank 0 local shard:   [████████░░░░░░░░]
         - Rank 1 local shard:   [░░░░░░░░████████]
         """
-        if is_gathered:
-            return f"[{cls.full_char * bar_width}]"
+        return self.gathered_bar if is_gathered else self.non_gathered_bar
 
-        if world_size <= 0 or bar_width <= 0:
-            return f"[{cls.empty_char * bar_width}]"
-
-        # Calculate character slots for this rank's shard slice
-        slot_size = bar_width / world_size
-        start_slot = int(round(rank * slot_size))
-        end_slot = int(round((rank + 1) * slot_size))
-
-        # Clamp slots to bounds
-        start_slot = max(0, min(bar_width, start_slot))
-        end_slot = max(start_slot, min(bar_width, end_slot))
-
-        left_pad = cls.empty_char * start_slot
-        shard_segment = cls.full_char * (end_slot - start_slot)
-        right_pad = cls.empty_char * (bar_width - end_slot)
-
-        return f"[{left_pad}{shard_segment}{right_pad}]"
-
-    @classmethod
     def render_transition_bars(
-        cls,
+        self,
         shape_before: torch.Size,
         shape_after: torch.Size,
-        rank: int,
-        world_size: int,
-        bar_width: int = 16,
     ) -> tuple[str, str]:
         """Calculates transition state bars (before -> after) based on shape changes."""
         numel_before = shape_before.numel()
         numel_after = shape_after.numel()
 
-        # Determine if transition is gathering (sharded -> full) or freeing/scattering (full -> sharded)
         if numel_before < numel_after:
-            # Gathering: before is sharded, after is full
-            bar_before = cls.render_shard_bar(rank, world_size, is_gathered=False, bar_width=bar_width)
-            bar_after = cls.render_shard_bar(rank, world_size, is_gathered=True, bar_width=bar_width)
-        elif numel_before > numel_after:
-            # Freeing / Reduce-Scatter: before is full, after is sharded
-            bar_before = cls.render_shard_bar(rank, world_size, is_gathered=True, bar_width=bar_width)
-            bar_after = cls.render_shard_bar(rank, world_size, is_gathered=False, bar_width=bar_width)
-        else:
-            # Equal shape: maintain full state
-            bar_before = cls.render_shard_bar(rank, world_size, is_gathered=True, bar_width=bar_width)
-            bar_after = bar_before
-
-        return bar_before, bar_after
+            return self.non_gathered_bar, self.gathered_bar
+        if numel_before > numel_after:
+            return self.gathered_bar, self.non_gathered_bar
+        return self.gathered_bar, self.gathered_bar
 
 
 class RankLogger:
@@ -98,6 +84,8 @@ class RankLogger:
         self.world_size = int(os.environ.get("WORLD_SIZE", 1))
         self.last_layer_prefix: str | None = None
         self.log_hooks: bool = False
+
+        self.visualizer = ASCIIVisualizer(rank=self.rank, world_size=self.world_size)
 
     def add_prefix_rank(self, message: str) -> str:
         """Formats string with rank prefix."""
@@ -165,11 +153,9 @@ class RankLogger:
             return
 
         # Render memory layout transition
-        before_bar, after_bar = ASCIIVisualizer.render_transition_bars(
+        before_bar, after_bar = self.visualizer.render_transition_bars(
             shape_before=shape_before,
             shape_after=shape_after,
-            rank=self.rank,
-            world_size=self.world_size,
         )
 
         current_prefix = self._extract_layer_prefix(parameter_name)
