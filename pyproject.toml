@@ -13,9 +13,11 @@ dependencies = [
 dev = [
     "pre-commit>=4.6.0",
     "pytest>=9.1.1",
+    "pytest-timeout>=2.4.0",
 ]
 
 [tool.pytest.ini_options]
+timeout = 30
 markers = [
     "multi_rank(world_size=2): run test across multiple CPU processes via torch.multiprocessing.spawn",
 ]
