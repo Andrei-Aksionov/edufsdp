@@ -3,7 +3,7 @@ import torch
 from torch import nn
 
 from gloofsdp.fsdp import FSDP
-from tests.base.distributed_test import DistributedTestBase
+from tests.base.test_class import DistributedTestBase
 
 
 @pytest.mark.multi_rank(world_size=2)

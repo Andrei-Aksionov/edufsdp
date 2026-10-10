@@ -11,7 +11,7 @@ from torch.distributed.fsdp import fully_shard
 from torch.distributed.tensor import DTensor
 
 from gloofsdp.fsdp import FSDP
-from tests.base.distributed_test import DistributedTestBase
+from tests.base.test_class import DistributedTestBase
 
 
 @pytest.mark.multi_rank(world_size=2)

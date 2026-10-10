@@ -7,10 +7,12 @@ unit tests across multiple CPU processes using `torch.multiprocessing.spawn`.
 import os
 import platform
 import socket
+from datetime import timedelta
 from typing import Any, Callable
 
 import pytest
 import torch
+from torch import distributed as dist
 
 
 def get_free_port() -> str:
@@ -45,6 +47,14 @@ def _spawn_worker(
 
     # Flag process as a spawned worker for teardown/setup conditional checks
     os.environ["PYTEST_TORCH_MP_SPAWN_WORKER"] = "1"
+
+    # Initialize PyTorch distributed process group
+    dist.init_process_group(
+        backend="gloo",
+        rank=rank,
+        world_size=world_size,
+        timeout=timedelta(seconds=28),
+    )
 
     # Execute class methods with bound `self` instance, or plain functions directly
     if test_instance is not None:

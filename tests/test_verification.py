@@ -37,7 +37,7 @@ def init_distributed():
 
 @pytest.mark.multi_rank(world_size=2)
 def test_run_verification_suite():
-    rank, world_size = init_distributed()
+    rank = dist.get_rank()
     device = torch.device("cpu")
     mesh = init_device_mesh("cpu", mesh_shape=(dist.get_world_size(),))
 
@@ -103,7 +103,8 @@ def test_run_verification_suite():
 
 @pytest.mark.multi_rank(world_size=2)
 def test_run_verification_loss_decreases():
-    rank, world_size = init_distributed()
+    world_size = dist.get_world_size()
+    rank = dist.get_rank()
     device = torch.device("cpu")
     mesh = init_device_mesh("cpu", mesh_shape=(dist.get_world_size(),))
 
