@@ -24,7 +24,7 @@ class TestShardingPlacement(DistributedTestBase):
 
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
-            module_parameter = getattr(getattr(wrapped.module, layer_name), attr).to_local()
+            module_parameter = getattr(getattr(wrapped.inner_module, layer_name), attr).to_local()
             assert module_parameter.shape == expected_local_shape, (
                 f"Rank {self.rank}: {parameter_name} module resting shape {module_parameter.shape} != {expected_local_shape}"
             )
@@ -36,7 +36,7 @@ class TestShardingPlacement(DistributedTestBase):
 
         gathered_shapes = {}
 
-        for name, child in wrapped.module.named_children():
+        for name, child in wrapped.inner_module.named_children():
 
             def make_pre_hook(layer_key: str):
                 def hook(module, inputs):
@@ -65,7 +65,7 @@ class TestShardingPlacement(DistributedTestBase):
 
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
-            module_parameter = getattr(getattr(wrapped.module, layer_name), attr).to_local()
+            module_parameter = getattr(getattr(wrapped.inner_module, layer_name), attr).to_local()
             assert module_parameter.shape == expected_local_shape, (
                 f"Rank {self.rank}: {parameter_name} post-forward shape was not freed "
                 f"back to {expected_local_shape}, got {module_parameter.shape}"
@@ -84,7 +84,7 @@ class TestShardingPlacement(DistributedTestBase):
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
 
-            custom_local = getattr(getattr(wrapped_custom.module, layer_name), attr).to_local()
+            custom_local = getattr(getattr(wrapped_custom.inner_module, layer_name), attr).to_local()
             native_local = getattr(getattr(model_native, layer_name), attr).to_local()
 
             assert custom_local.shape == native_local.shape == expected_local_shape, (
@@ -119,7 +119,7 @@ class TestShardingPlacement(DistributedTestBase):
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
 
-            custom_parameter = getattr(getattr(wrapped_custom.module, layer_name), attr).to_local()
+            custom_parameter = getattr(getattr(wrapped_custom.inner_module, layer_name), attr).to_local()
             native_parameter = getattr(getattr(model_native, layer_name), attr).to_local()
 
             # Shape parity
@@ -173,7 +173,7 @@ class TestShardingPlacement(DistributedTestBase):
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
             # sharded_parameter = wrapped_custom.sharded_params[parameter_name]
-            custom_parameter = getattr(getattr(wrapped_custom.module, layer_name), attr)
+            custom_parameter = getattr(getattr(wrapped_custom.inner_module, layer_name), attr)
             custom_local_grad = custom_parameter.grad.to_local()
 
             # Verify local_parameter has a gradient populated
@@ -218,7 +218,7 @@ class TestShardingPlacement(DistributedTestBase):
 
         for parameter_name, (global_shape, _) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
-            child_module = getattr(wrapped.module, layer_name)
+            child_module = getattr(wrapped.inner_module, layer_name)
 
             def make_hook(full_key: str, mod: torch.nn.Module, attribute_name: str):
                 def hook(module: torch.nn.Module, grad_output: tuple) -> None:
@@ -259,7 +259,7 @@ class TestShardingPlacement(DistributedTestBase):
 
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
-            module_parameter = getattr(getattr(wrapped.module, layer_name), attr)
+            module_parameter = getattr(getattr(wrapped.inner_module, layer_name), attr)
 
             # 1. Weight memory must be freed back to local sharded shape on the actual module attribute
             assert module_parameter.to_local().shape == expected_local_shape, (
@@ -300,7 +300,7 @@ class TestShardingPlacement(DistributedTestBase):
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
 
-            custom_parameter = getattr(getattr(wrapped_custom.module, layer_name), attr)
+            custom_parameter = getattr(getattr(wrapped_custom.inner_module, layer_name), attr)
             native_parameter = getattr(getattr(model_native, layer_name), attr)
 
             # 1. Weight shape & value parity post-backward (restored sharded state)

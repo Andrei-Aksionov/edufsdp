@@ -18,7 +18,7 @@ class ASCIIVisualizer:
     full_char = "█"
     empty_char = "░"
 
-    def __init__(self, bar_width: int = 16, rank: int = 0, world_size: int = 1) -> None:
+    def __init__(self, bar_width: int = 18, rank: int = 0, world_size: int = 1) -> None:
         self.bar_width = bar_width
         self.rank = rank
         self.world_size = world_size

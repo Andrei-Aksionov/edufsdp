@@ -14,6 +14,7 @@ Data Flow & Architecture:
 """
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 
 
@@ -23,19 +24,21 @@ class MLP(nn.Module):
 
     This network is purposely kept small with distinct input/hidden/output dimensions
     to make parameter shape tracking easy when sharding across multi-rank nodes.
-    Dimensions are selected to work with [2, 3, 4, 6] ranks.
 
-    Args:
-        input_dim: Feature dimension of input tensor. Defaults to 18.
-        hidden_dim: Hidden representation dimension. Defaults to 24.
-        output_dim: Dimension of output predictions. Defaults to 12.
+    NOTE: layer dimensions are selected automatically based on the number of ranks.
     """
 
-    def __init__(self, input_dim: int = 18, hidden_dim: int = 24, output_dim: int = 12) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.layer1 = nn.Linear(input_dim, hidden_dim)
+
+        world_size = dist.get_world_size()
+        self.input_dim = 3 * world_size
+        self.hidden_dim = 4 * world_size
+        self.output_dim = 2 * world_size
+
+        self.layer1 = nn.Linear(self.input_dim, self.hidden_dim)
         self.relu = nn.ReLU()
-        self.layer2 = nn.Linear(hidden_dim, output_dim)
+        self.layer2 = nn.Linear(self.hidden_dim, self.output_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

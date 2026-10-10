@@ -65,7 +65,7 @@ class TestOptimizerStates(DistributedTestBase):
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
 
-            custom_parameter = getattr(getattr(wrapped_custom.module, layer_name), attr)
+            custom_parameter = getattr(getattr(wrapped_custom.inner_module, layer_name), attr)
             native_parameter = getattr(getattr(model_native, layer_name), attr)
 
             # Ensure parameters are tracked inside optimizer state dicts

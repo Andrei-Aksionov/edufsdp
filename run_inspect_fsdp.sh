@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
 torchrun \
-  --nproc-per-node=3 \
+  --nproc-per-node=6 \
   --master-addr=127.0.0.1 \
   --master-port=29500 \
   inspect_fsdp.py \
-  --num-iterations 3 \
+  --num-iterations 1 \
   --memory-first-iter-only \
   --show-memory-training \
   --show-memory-checkpoint
 
-  # NOTE: To disable boolean flags add `no-` prefix, e.g. --no-show-memory-training
+  # NOTE: To disable boolean flags add a `no-` prefix, e.g. --no-show-memory-training

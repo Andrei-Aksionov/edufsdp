@@ -26,7 +26,7 @@ class TestDTensorConsistency(DistributedTestBase):
         # 1. Check resting state before forward
         for parameter_name in self.expected_shapes:
             layer_name, attr = parameter_name.split(".")
-            module_parameter = getattr(getattr(wrapped.module, layer_name), attr)
+            module_parameter = getattr(getattr(wrapped.inner_module, layer_name), attr)
             assert isinstance(module_parameter, DTensor), (
                 f"Rank {self.rank}: Resting parameter {parameter_name} expected DTensor, got {type(module_parameter)}"
             )
@@ -38,7 +38,7 @@ class TestDTensorConsistency(DistributedTestBase):
         # 3. Check resting state post-forward (should be resharded back to resting DTensor)
         for parameter_name in self.expected_shapes:
             layer_name, attr = parameter_name.split(".")
-            module_parameter = getattr(getattr(wrapped.module, layer_name), attr)
+            module_parameter = getattr(getattr(wrapped.inner_module, layer_name), attr)
             assert isinstance(module_parameter, DTensor), (
                 f"Rank {self.rank}: Post-forward parameter {parameter_name} expected DTensor, got {type(module_parameter)}"
             )
@@ -55,7 +55,7 @@ class TestDTensorConsistency(DistributedTestBase):
 
         for parameter_name in self.expected_shapes:
             layer_name, attr = parameter_name.split(".")
-            module_parameter = getattr(getattr(wrapped.module, layer_name), attr)
+            module_parameter = getattr(getattr(wrapped.inner_module, layer_name), attr)
 
             # 1. Weight parameter type check
             assert isinstance(module_parameter, DTensor), (
@@ -90,7 +90,7 @@ class TestDTensorConsistency(DistributedTestBase):
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
 
-            custom_parameter = getattr(getattr(wrapped_custom.module, layer_name), attr)
+            custom_parameter = getattr(getattr(wrapped_custom.inner_module, layer_name), attr)
             native_parameter = getattr(getattr(model_native, layer_name), attr)
 
             # 1. Parameter Type Parity (Both must be DTensors)

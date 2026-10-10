@@ -68,11 +68,11 @@ class FSDP(nn.Module):
 
     def __init__(self, module: nn.Module, device_mesh: DeviceMesh) -> None:
         super().__init__()
-        self.module = module
+        self.inner_module = module
         self.device_mesh = device_mesh
 
         # Single-pass transformation: shards parameters & registers hooks in one go
-        self._wrap_module_tree(self.module)
+        self._wrap_module_tree(self.inner_module)
 
     def _wrap_module_tree(self, module: nn.Module, prefix: str = "") -> None:
         """
@@ -116,14 +116,14 @@ class FSDP(nn.Module):
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Delegates forward pass execution to the inner wrapped module."""
-        return self.module(*args, **kwargs)
+        return self.inner_module(*args, **kwargs)
 
     @property
     def sharded_parameters(self) -> dict[str, ShardedParameter]:
         """Dynamically collects all ShardedParameter objects across submodules by searching through module attributes."""
         sharded_map: dict[str, ShardedParameter] = {}
 
-        for module_name, submodule in self.module.named_modules():
+        for module_name, submodule in self.inner_module.named_modules():
             # Check if this submodule holds any registered sharded parameter objects
             if hasattr(submodule, "_fsdp_sharded_parameters"):
                 for parameter_name, parameter_wrapper in submodule._fsdp_sharded_parameters.items():
@@ -146,7 +146,7 @@ class FSDP(nn.Module):
         Returns:
             Map of parameter FQNs to tensor shards or gathered full tensors.
         """
-        return StateDictManager.get_state_dict(self.module, self.sharded_parameters, state_dict_type)
+        return StateDictManager.get_state_dict(self.inner_module, self.sharded_parameters, state_dict_type)
 
     def load_state_dict(
         self,
@@ -160,4 +160,4 @@ class FSDP(nn.Module):
             state_dict: Checkpoint mapping parameter names to tensors.
             state_dict_type: Format of incoming state_dict (`LOCAL` or `FULL`).
         """
-        StateDictManager.load_state_dict(self.module, self.sharded_parameters, state_dict, state_dict_type)
+        StateDictManager.load_state_dict(self.inner_module, self.sharded_parameters, state_dict, state_dict_type)

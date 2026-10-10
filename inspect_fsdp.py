@@ -214,8 +214,8 @@ def main() -> None:
 
     # 2. Prepare a distinct shard of the total batch for each rank (Data Parallelism)
     batch_per_rank = 2
-    global_inputs = torch.randn(world_size * batch_per_rank, 18, requires_grad=True)
-    global_targets = torch.randn(world_size * batch_per_rank, 12)
+    global_inputs = torch.randn(world_size * batch_per_rank, fsdp_model.inner_module.input_dim, requires_grad=True)
+    global_targets = torch.randn(world_size * batch_per_rank, fsdp_model.inner_module.output_dim)
 
     # 3. Slice rank-local input batch
     start_idx = rank * batch_per_rank
