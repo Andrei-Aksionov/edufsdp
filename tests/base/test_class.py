@@ -1,6 +1,5 @@
 """Base test harness and model definitions for distributed unit tests."""
 
-import os
 from typing import Any
 
 import torch
@@ -39,14 +38,9 @@ class SimpleMLP(nn.Module):
 class DistributedTestBase:
     """Base class for distributed unit tests executing under `torch.multiprocessing.spawn`."""
 
-    @staticmethod
-    def is_torch_mp_worker() -> bool:
-        """Checks if current process is a worker spawned by the multi_rank marker runner."""
-        return os.environ.get("PYTEST_TORCH_MP_SPAWN_WORKER") == "1"
-
     def setup_method(self, method: Any) -> None:
         """Sets up CPU device mesh and model instances inside worker process."""
-        if not self.is_torch_mp_worker():
+        if not dist.is_initialized():
             return
 
         self.rank = dist.get_rank()

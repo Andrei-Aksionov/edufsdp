@@ -45,9 +45,6 @@ def _spawn_worker(
     # Explicit loopback interface binding for Gloo to prevent socket warnings
     os.environ["GLOO_SOCKET_IFNAME"] = "lo0" if platform.system() == "Darwin" else "lo"
 
-    # Flag process as a spawned worker for teardown/setup conditional checks
-    os.environ["PYTEST_TORCH_MP_SPAWN_WORKER"] = "1"
-
     # Initialize PyTorch distributed process group
     dist.init_process_group(
         backend="gloo",
