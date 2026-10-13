@@ -1,4 +1,7 @@
+"""Integration parity tests comparing gloofsdp against PyTorch native FSDP v2 (fully_shard)."""
+
 import copy
+from functools import partial
 
 import pytest
 import torch
@@ -12,453 +15,356 @@ from gloofsdp.state_dict import StateDictType as EDUStateDictType
 from tests.base.test_class import DistributedTestBase
 
 
+def _reference_fully_shard_model(model: nn.Module, device_mesh) -> nn.Module:
+    """Recursively discovers and fully_shards all submodules owning parameters dynamically."""
+    for _, submodule in model.named_modules():
+        if any(p.requires_grad for p in submodule.parameters(recurse=False)):
+            fully_shard(submodule, mesh=device_mesh)
+    fully_shard(model, mesh=device_mesh)
+    return model
+
+
 @pytest.mark.multi_rank(world_size=2)
 class TestStateDictParity(DistributedTestBase):
-    def test_state_dict(self):
-        # 1. Base Model Initialization & Weight Sync
-        # Wrap with EducationalFSDP and Native FSDP
-        edu_model = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
-        native_model = fully_shard(copy.deepcopy(self.base_model), mesh=self.device_mesh)
+    """Verifies state dictionary extraction parity (LOCAL and FULL) between EducationalFSDP and Native FSDP2."""
 
-        print(f"[Rank {self.rank}] Testing State Dict Extraction...")
+    def test_full_state_dict_parity(self) -> None:
+        """Verifies full (unsharded) state dict parity matches PyTorch native FSDP2."""
+        wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
+        wrapped_reference = _reference_fully_shard_model(copy.deepcopy(self.base_model), self.device_mesh)
 
-        # ------------------------------------------------------------------
-        # TEST A: FULL State Dict Parity (EducationalFSDP vs Native FSDP)
-        # ------------------------------------------------------------------
-        # Get Full State Dict from Educational FSDP (All-Gathers parameters into global shapes)
-        edu_full_state_dict = edu_model.state_dict(state_dict_type=EDUStateDictType.FULL)
-
-        # Get Full State Dict from Native PyTorch FSDP
-        native_full_state_dict, _ = get_state_dict(
-            native_model, optimizers=(), options=StateDictOptions(full_state_dict=True)
+        custom_sd = wrapped_custom.state_dict(state_dict_type=EDUStateDictType.FULL)
+        reference_sd, _ = get_state_dict(
+            wrapped_reference, optimizers=(), options=StateDictOptions(full_state_dict=True)
         )
 
         if self.rank == 0:
-            assert set(edu_full_state_dict.keys()) == set(native_full_state_dict.keys()), (
+            assert set(custom_sd.keys()) == set(reference_sd.keys()), (
                 "State dict keys mismatch between EducationalFSDP and Native FSDP!"
             )
+            for key in custom_sd:
+                torch.testing.assert_close(custom_sd[key], reference_sd[key], rtol=1e-6, atol=1e-6)
 
-            for key in edu_full_state_dict:
-                edu_tensor = edu_full_state_dict[key]
-                native_tensor = native_full_state_dict[key]
+    def test_local_state_dict_parity(self) -> None:
+        """Verifies local (sharded) state dict parity matches PyTorch native FSDP2."""
+        wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
+        wrapped_reference = _reference_fully_shard_model(copy.deepcopy(self.base_model), self.device_mesh)
 
-                # Verify shapes match full un-sharded parameter shapes
-                assert edu_tensor.shape == native_tensor.shape, (
-                    f"Shape mismatch for {key}: Edu {edu_tensor.shape} vs Native {native_tensor.shape}"
-                )
+        custom_sd = wrapped_custom.state_dict(state_dict_type=EDUStateDictType.LOCAL)
+        reference_sd, _ = get_state_dict(
+            wrapped_reference, optimizers=(), options=StateDictOptions(full_state_dict=False)
+        )
 
-                # Verify values are identical
-                max_diff = torch.abs(edu_tensor - native_tensor).max().item()
-                assert max_diff < 1e-6, f"Value mismatch in full state_dict for {key}: max diff {max_diff}"
+        assert set(custom_sd.keys()) == set(reference_sd.keys()), (
+            "Local state dict keys mismatch between EducationalFSDP and Native FSDP!"
+        )
+        for key in custom_sd:
+            torch.testing.assert_close(custom_sd[key], reference_sd[key].to_local(), rtol=1e-6, atol=1e-6)
 
 
 @pytest.mark.multi_rank(world_size=2)
-class TestDTensorConsistency(DistributedTestBase):
-    def test_dtensor_parity_against_native_fsdp2(self) -> None:
-        """Verifies complete DTensor property parity (type, placement, mesh, grad type) against Native FSDP2."""
-        model_custom = copy.deepcopy(self.base_model)
-        wrapped_custom = FSDP(model_custom, device_mesh=self.device_mesh)
+class TestDTensorStructureParity(DistributedTestBase):
+    """Verifies DTensor property, placement, mesh, and gradient structure parity against FSDP2."""
 
-        model_native = copy.deepcopy(self.base_model)
-        fully_shard(model_native, mesh=self.device_mesh)
+    def test_dtensor_properties_and_gradients_parity(self) -> None:
+        """Verifies parameter types, placements, device mesh, local shapes, and gradient DTensor types."""
+        wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
+        wrapped_reference = _reference_fully_shard_model(copy.deepcopy(self.base_model), self.device_mesh)
 
-        dummy_input = torch.randn(2, 16, device=self.device, requires_grad=True)
+        dummy_input = torch.randn(2, self.base_model.input_dim, device=self.device, requires_grad=True)
 
-        # Execute Forward + Backward cycle
         out_custom = wrapped_custom(dummy_input)
         out_custom.sum().backward()
 
-        out_native = model_native(dummy_input)
-        out_native.sum().backward()
+        out_reference = wrapped_reference(dummy_input)
+        out_reference.sum().backward()
 
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
 
             custom_parameter = getattr(getattr(wrapped_custom.inner_module, layer_name), attr)
-            native_parameter = getattr(getattr(model_native, layer_name), attr)
+            reference_parameter = getattr(getattr(wrapped_reference, layer_name), attr)
 
-            # 1. Parameter Type Parity (Both must be DTensors)
-            assert isinstance(custom_parameter, DTensor), (
-                f"Rank {self.rank}: Custom {parameter_name} expected DTensor, got {type(custom_parameter)}"
-            )
-            assert isinstance(native_parameter, DTensor), (
-                f"Rank {self.rank}: Native {parameter_name} expected DTensor, got {type(native_parameter)}"
-            )
+            assert isinstance(custom_parameter, DTensor)
+            assert isinstance(reference_parameter, DTensor)
+            assert custom_parameter.placements == reference_parameter.placements
+            assert custom_parameter.device_mesh == reference_parameter.device_mesh
+            assert custom_parameter.to_local().shape == reference_parameter.to_local().shape == expected_local_shape
 
-            # 2. Placement & Mesh Parity
-            assert custom_parameter.placements == native_parameter.placements, (
-                f"Rank {self.rank}: {parameter_name} placement mismatch - Custom {custom_parameter.placements}, "
-                f"Native {native_parameter.placements}"
-            )
-            assert custom_parameter.device_mesh == native_parameter.device_mesh, (
-                f"Rank {self.rank}: {parameter_name} device_mesh mismatch - Custom {custom_parameter.device_mesh}, "
-                f"Native {native_parameter.device_mesh}"
-            )
-
-            # 3. Local Shard Shape Parity
-            assert custom_parameter.to_local().shape == native_parameter.to_local().shape == expected_local_shape, (
-                f"Rank {self.rank}: {parameter_name} local shape mismatch - Custom {custom_parameter.to_local().shape}, "
-                f"Native {native_parameter.to_local().shape}"
-            )
-
-            # 4. Gradient Type & Local Shape Parity
-            assert isinstance(custom_parameter.grad, DTensor), (
-                f"Rank {self.rank}: Custom {parameter_name}.grad expected DTensor, got {type(custom_parameter.grad)}"
-            )
-            assert isinstance(native_parameter.grad, DTensor), (
-                f"Rank {self.rank}: Native {parameter_name}.grad expected DTensor, got {type(native_parameter.grad)}"
-            )
+            assert isinstance(custom_parameter.grad, DTensor)
+            assert isinstance(reference_parameter.grad, DTensor)
             assert (
-                custom_parameter.grad.to_local().shape == native_parameter.grad.to_local().shape == expected_local_shape
-            ), (
-                f"Rank {self.rank}: {parameter_name}.grad local shape mismatch - Custom {custom_parameter.grad.to_local().shape}, "
-                f"Native {native_parameter.grad.to_local().shape}"
+                custom_parameter.grad.to_local().shape
+                == reference_parameter.grad.to_local().shape
+                == expected_local_shape
             )
 
 
 @pytest.mark.multi_rank(world_size=2)
-class TestOptimizerStates(DistributedTestBase):
-    """Test suite covering static sharding, runtime weight lifecycle, and FSDP2 parity."""
+class TestOptimizerStateParity(DistributedTestBase):
+    """Verifies optimizer state sharding and structure parity against FSDP2."""
 
-    def test_optimizer_state_parity_post_step(self) -> None:
-        """Verifies optimizer state lazy creation, local sharded shapes, and parity against FSDP2 after step()."""
-        # 1. Setup Custom FSDP
-        model_custom = copy.deepcopy(self.base_model)
-        wrapped_custom = FSDP(model_custom, device_mesh=self.device_mesh)
+    def test_optimizer_state_sharding_parity(self) -> None:
+        """Verifies optimizer state buffer names, sharding shapes, and parity post optimizer step()."""
+        wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
         optimizer_custom = torch.optim.Adam(wrapped_custom.parameters(), lr=0.001)
 
-        # 2. Setup Native FSDP2
-        model_native = copy.deepcopy(self.base_model)
-        fully_shard(model_native.fc1, mesh=self.device_mesh)
-        fully_shard(model_native.fc2, mesh=self.device_mesh)
-        fully_shard(model_native, mesh=self.device_mesh)
-        optimizer_native = torch.optim.Adam(model_native.parameters(), lr=0.001)
+        wrapped_reference = _reference_fully_shard_model(copy.deepcopy(self.base_model), self.device_mesh)
+        optimizer_reference = torch.optim.Adam(wrapped_reference.parameters(), lr=0.001)
 
-        # 3. Run Forward + Backward + Step with deterministic input
-        dummy_input = torch.randn(2, 16, device=self.device, requires_grad=True)
+        dummy_input = torch.randn(2, self.base_model.input_dim, device=self.device, requires_grad=True)
 
         out_custom = wrapped_custom(dummy_input)
         out_custom.sum().backward()
         optimizer_custom.step()
 
-        out_native = model_native(dummy_input)
-        out_native.sum().backward()
-        optimizer_native.step()
+        out_reference = wrapped_reference(dummy_input)
+        out_reference.sum().backward()
+        optimizer_reference.step()
 
-        # 4. Verify Custom FSDP state presence & shape parity against Native FSDP2
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
 
             custom_parameter = getattr(getattr(wrapped_custom.inner_module, layer_name), attr)
-            native_parameter = getattr(getattr(model_native, layer_name), attr)
+            reference_parameter = getattr(getattr(wrapped_reference, layer_name), attr)
 
-            # Ensure parameters are tracked inside optimizer state dicts
-            assert custom_parameter in optimizer_custom.state, (
-                f"Rank {self.rank}: {parameter_name} was not populated in custom optimizer.state"
-            )
-            assert native_parameter in optimizer_native.state, (
-                f"Rank {self.rank}: {parameter_name} was not populated in native optimizer.state"
-            )
+            assert custom_parameter in optimizer_custom.state
+            assert reference_parameter in optimizer_reference.state
 
             custom_state = optimizer_custom.state[custom_parameter]
-            native_state = optimizer_native.state[native_parameter]
+            reference_state = optimizer_reference.state[reference_parameter]
 
-            # Verify Adam keys exist
             for state_key in ("exp_avg", "exp_avg_sq"):
-                assert state_key in custom_state, (
-                    f"Rank {self.rank}: Key '{state_key}' missing from custom optimizer state for {parameter_name}"
-                )
-
+                assert state_key in custom_state
                 custom_tensor = (
                     custom_state[state_key].to_local()
                     if hasattr(custom_state[state_key], "to_local")
                     else custom_state[state_key]
                 )
-                native_tensor = (
-                    native_state[state_key].to_local()
-                    if hasattr(native_state[state_key], "to_local")
-                    else native_state[state_key]
+                reference_tensor = (
+                    reference_state[state_key].to_local()
+                    if hasattr(reference_state[state_key], "to_local")
+                    else reference_state[state_key]
                 )
 
-                # Assert shape matches expected local sharded shape and native FSDP shape
-                assert custom_tensor.shape == native_tensor.shape == expected_local_shape, (
-                    f"Rank {self.rank}: {parameter_name} state '{state_key}' shape mismatch - Custom "
-                    f"{custom_tensor.shape}, Native {native_tensor.shape}, Expected {expected_local_shape}"
-                )
+                assert custom_tensor.shape == reference_tensor.shape == expected_local_shape
 
 
 @pytest.mark.multi_rank(world_size=2)
-class TestShardingPlacement(DistributedTestBase):
-    """Test suite covering static sharding, runtime weight lifecycle, and FSDP2 parity."""
+class TestExecutionLifecycleParity(DistributedTestBase):
+    """Verifies strict parity of execution lifecycle state transitions between EducationalFSDP and Native FSDP2."""
 
-    def test_fsdp2_dtensor_parity_all_layers(self) -> None:
-        """Verifies element count parity against Native PyTorch FSDP2 (fully_shard) for all layers."""
-        model_custom = copy.deepcopy(self.base_model)
-        wrapped_custom = FSDP(model_custom, device_mesh=self.device_mesh)
+    def test_sharding_after_wrapping_parity(self) -> None:
+        """1. Verifies that parameters are correctly sharded immediately upon wrapping for both models."""
+        wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
+        wrapped_reference = _reference_fully_shard_model(copy.deepcopy(self.base_model), self.device_mesh)
 
-        model_native = copy.deepcopy(self.base_model)
-        fully_shard(model_native.fc1, mesh=self.device_mesh)
-        fully_shard(model_native.fc2, mesh=self.device_mesh)
-        fully_shard(model_native, mesh=self.device_mesh)
-
-        for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
+        for parameter_name, (global_shape, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
+            custom_param = getattr(getattr(wrapped_custom.inner_module, layer_name), attr)
+            reference_param = getattr(getattr(wrapped_reference, layer_name), attr)
 
-            custom_local = getattr(getattr(wrapped_custom.inner_module, layer_name), attr).to_local()
-            native_local = getattr(getattr(model_native, layer_name), attr).to_local()
+            # Both must be sharded to local shape initially
+            assert custom_param.to_local().shape == expected_local_shape
+            assert reference_param.to_local().shape == expected_local_shape
+            assert not wrapped_custom.sharded_parameters[parameter_name].is_gathered
 
-            assert custom_local.shape == native_local.shape == expected_local_shape, (
-                f"Rank {self.rank}: {parameter_name} shape mismatch - Custom {custom_local.shape}, "
-                f"Native FSDP2 {native_local.shape}, Expected {expected_local_shape}"
-            )
+    def test_forward_parameters_are_gathered_parity(self) -> None:
+        """2. Verifies that parameters are all-gathered during the forward pass in both models."""
+        wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
+        wrapped_reference = _reference_fully_shard_model(copy.deepcopy(self.base_model), self.device_mesh)
 
-    def test_fsdp2_dtensor_parity_post_forward(self) -> None:
-        """Verifies weight values, output parity, and None grads post-forward pass against FSDP2."""
-        model_custom = copy.deepcopy(self.base_model)
-        wrapped_custom = FSDP(model_custom, device_mesh=self.device_mesh)
+        custom_shapes_during_forward = {}
+        reference_shapes_during_forward = {}
 
-        model_native = copy.deepcopy(self.base_model)
-        fully_shard(model_native.fc1, mesh=self.device_mesh)
-        fully_shard(model_native.fc2, mesh=self.device_mesh)
-        fully_shard(model_native, mesh=self.device_mesh)
+        def forward_pre_hook(module, args, model=None, shapes_dict=None):
+            for parameter_name, _ in self.expected_shapes.items():
+                layer_name, attr = parameter_name.split(".")
+                if module == getattr(model, layer_name):
+                    param = getattr(module, attr)
+                    shapes_dict[parameter_name] = param.shape
 
-        dummy_input = torch.randn(2, 16, device=self.device)
-
-        # Execute forward pass on both models
-        out_custom = wrapped_custom(dummy_input)
-        out_native = model_native(dummy_input)
-
-        # 1. Output parity
-        torch.testing.assert_close(
-            out_custom,
-            out_native,
-            msg=f"Rank {self.rank}: Forward output mismatch between Custom FSDP and Native FSDP2",
+        custom_pre_hook = partial(
+            forward_pre_hook,
+            model=wrapped_custom.inner_module,
+            shapes_dict=custom_shapes_during_forward,
+        )
+        reference_pre_hook = partial(
+            forward_pre_hook,
+            model=wrapped_reference,
+            shapes_dict=reference_shapes_during_forward,
         )
 
-        # 2. Weight shape, value parity, and grad checks post-forward
-        for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
-            layer_name, attr = parameter_name.split(".")
+        custom_handles = [
+            getattr(wrapped_custom.inner_module, p.split(".")[0]).register_forward_pre_hook(custom_pre_hook)
+            for p in self.expected_shapes
+        ]
+        reference_handles = [
+            getattr(wrapped_reference, p.split(".")[0]).register_forward_pre_hook(reference_pre_hook)
+            for p in self.expected_shapes
+        ]
 
-            custom_parameter = getattr(getattr(wrapped_custom.inner_module, layer_name), attr).to_local()
-            native_parameter = getattr(getattr(model_native, layer_name), attr).to_local()
+        dummy_input = torch.randn(2, self.base_model.input_dim, device=self.device)
+        wrapped_custom(dummy_input)
+        wrapped_reference(dummy_input)
 
-            # Shape parity
-            assert custom_parameter.shape == native_parameter.shape == expected_local_shape, (
-                f"Rank {self.rank}: Post-forward {parameter_name} shape mismatch - Custom {custom_parameter.shape}, "
-                f"Native FSDP2 {native_parameter.shape}"
-            )
+        for h in custom_handles + reference_handles:
+            h.remove()
 
-            # Value parity (rested sharded weights unchanged)
-            torch.testing.assert_close(
-                custom_parameter,
-                native_parameter,
-                msg=f"Rank {self.rank}: Post-forward {parameter_name} weight values diverged from Native FSDP2",
-            )
+        for parameter_name, (global_shape, _) in self.expected_shapes.items():
+            assert custom_shapes_during_forward.get(parameter_name) == global_shape
+            assert reference_shapes_during_forward.get(parameter_name) == global_shape
 
-            # Gradients must be None post-forward
-            assert custom_parameter.grad is None, (
-                f"Rank {self.rank}: Expected {parameter_name}.grad to be None on Custom FSDP post-forward"
-            )
-            assert native_parameter.grad is None, (
-                f"Rank {self.rank}: Expected {parameter_name}.grad to be None on Native FSDP2 post-forward"
-            )
+    def test_forward_parameters_resharded_after_forward_parity(self) -> None:
+        """3. Verifies that parameters are resharded back to local shapes after forward in both models."""
+        wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
+        wrapped_reference = _reference_fully_shard_model(copy.deepcopy(self.base_model), self.device_mesh)
 
-    # ---------- Backward step -------------------
-
-    def test_backward_pass_sharded_gradients(self) -> None:
-        """Verifies that gradients are computed, sharded, and match local parameter shapes post loss.backward()."""
-
-        # 1. Custom EducationalFSDP execution
-        model_custom = copy.deepcopy(self.base_model)
-        wrapped_custom = FSDP(model_custom, device_mesh=self.device_mesh)
-
-        torch.manual_seed(42)
-        dummy_input = torch.randn(2, 16)
-        output_custom = wrapped_custom(dummy_input)
-        loss_custom = output_custom.sum()
-        loss_custom.backward()
-
-        # 2. Native FSDP2 execution
-        model_native = copy.deepcopy(self.base_model)
-        fully_shard(model_native.fc1, mesh=self.device_mesh)
-        fully_shard(model_native.fc2, mesh=self.device_mesh)
-        fully_shard(model_native, mesh=self.device_mesh)
-
-        torch.manual_seed(42)
-        output_native = model_native(dummy_input)
-        loss_native = output_native.sum()
-        loss_native.backward()
-
-        # 3. Assert local gradient shapes and FSDP2 parity for all sharded layers
-        for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
-            layer_name, attr = parameter_name.split(".")
-            # sharded_parameter = wrapped_custom.sharded_params[parameter_name]
-            custom_parameter = getattr(getattr(wrapped_custom.inner_module, layer_name), attr)
-            custom_local_grad = custom_parameter.grad.to_local()
-
-            # Verify local_parameter has a gradient populated
-            assert custom_local_grad is not None, (
-                f"Rank {self.rank}: {parameter_name} local_parameter.grad was None after loss.backward()"
-            )
-
-            # Verify gradient shape matches local parameter shape exactly
-            custom_grad_shape = custom_local_grad.shape
-            assert custom_grad_shape == expected_local_shape, (
-                f"Rank {self.rank}: {parameter_name} local grad shape {custom_grad_shape} "
-                f"does not match expected local parameter shape {expected_local_shape}"
-            )
-
-            # Verify local gradient element count parity against Native FSDP2
-            native_parameter = getattr(getattr(model_native, layer_name), attr)
-            native_local_grad = native_parameter.grad.to_local()
-
-            assert custom_local_grad.shape == native_local_grad.shape, (
-                f"Rank {self.rank}: {parameter_name} gradient element shape ({custom_local_grad.shape}) "
-                f"does not match Native FSDP2 local gradient element shape ({native_local_grad.shape})"
-            )
-
-            try:
-                torch.testing.assert_close(
-                    custom_local_grad,
-                    native_local_grad,
-                    rtol=1e-5,
-                    atol=1e-8,
-                )
-            except AssertionError as e:
-                raise AssertionError(
-                    f"Rank {self.rank}: {parameter_name} gradient mismatch against native FSDP2:\n{e}"
-                ) from None
-
-    def test_fsdp2_dtensor_parity_post_backward(self) -> None:
-        """Verifies weight, gradient shape, and gradient value parity post-backward against FSDP2."""
-        model_custom = copy.deepcopy(self.base_model)
-        wrapped_custom = FSDP(model_custom, device_mesh=self.device_mesh)
-
-        model_native = copy.deepcopy(self.base_model)
-        fully_shard(model_native.fc1, mesh=self.device_mesh)
-        fully_shard(model_native.fc2, mesh=self.device_mesh)
-        fully_shard(model_native, mesh=self.device_mesh)
-
-        # Use identical input to ensure identical gradient computations
-        dummy_input = torch.randn(2, 16, device=self.device)
-
-        out_custom = wrapped_custom(dummy_input)
-        loss_custom = out_custom.sum()
-        loss_custom.backward()
-
-        out_native = model_native(dummy_input)
-        loss_native = out_native.sum()
-        loss_native.backward()
+        dummy_input = torch.randn(2, self.base_model.input_dim, device=self.device)
+        wrapped_custom(dummy_input)
+        wrapped_reference(dummy_input)
 
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
+            custom_param = getattr(getattr(wrapped_custom.inner_module, layer_name), attr)
+            reference_param = getattr(getattr(wrapped_reference, layer_name), attr)
 
-            custom_parameter = getattr(getattr(wrapped_custom.inner_module, layer_name), attr)
-            native_parameter = getattr(getattr(model_native, layer_name), attr)
+            assert custom_param.to_local().shape == expected_local_shape
+            assert reference_param.to_local().shape == expected_local_shape
+            assert not wrapped_custom.sharded_parameters[parameter_name].is_gathered
 
-            # 1. Weight shape & value parity post-backward (restored sharded state)
-            custom_weight_local = custom_parameter.to_local()
-            native_weight_local = native_parameter.to_local()
+    def test_backward_parameters_are_gathered_parity(self) -> None:
+        """4. Verifies that parameters are all-gathered during the backward pass in both models."""
+        wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
+        wrapped_reference = _reference_fully_shard_model(copy.deepcopy(self.base_model), self.device_mesh)
 
-            assert custom_weight_local.shape == native_weight_local.shape == expected_local_shape, (
-                f"Rank {self.rank}: Post-backward {parameter_name} weight shape mismatch - Custom "
-                f"{custom_weight_local.shape}, Native FSDP2 {native_weight_local.shape}"
-            )
+        custom_shapes_during_backward = {}
+        reference_shapes_during_backward = {}
 
-            torch.testing.assert_close(
-                custom_weight_local,
-                native_weight_local,
-                msg=f"Rank {self.rank}: Post-backward {parameter_name} weight values diverged from Native FSDP2",
-            )
+        def backward_pre_hook(module, grad_output, model=None, shapes_dict=None):
+            for parameter_name, _ in self.expected_shapes.items():
+                layer_name, attr = parameter_name.split(".")
+                if module == getattr(model, layer_name):
+                    param = getattr(module, attr)
+                    shapes_dict[parameter_name] = param.shape
 
-            # 2. Gradient existence & shape checks
-            assert custom_parameter.grad is not None, (
-                f"Rank {self.rank}: {parameter_name}.grad was None on Custom FSDP post-backward"
-            )
-            assert native_parameter.grad is not None, (
-                f"Rank {self.rank}: {parameter_name}.grad was None on Native FSDP2 post-backward"
-            )
+        custom_backward_pre_hook = partial(
+            backward_pre_hook,
+            model=wrapped_custom.inner_module,
+            shapes_dict=custom_shapes_during_backward,
+        )
+        reference_backward_pre_hook = partial(
+            backward_pre_hook,
+            model=wrapped_reference,
+            shapes_dict=reference_shapes_during_backward,
+        )
 
-            # For Native FSDP2 DTensors, grad is also a DTensor/tensor whose local shard matches sharded_shape
-            custom_grad_local = (
-                custom_parameter.grad.to_local()
-                if hasattr(custom_parameter.grad, "to_local")
-                else custom_parameter.grad
+        custom_handles = [
+            getattr(wrapped_custom.inner_module, p.split(".")[0]).register_full_backward_pre_hook(
+                custom_backward_pre_hook
             )
-            native_grad_local = (
-                native_parameter.grad.to_local()
-                if hasattr(native_parameter.grad, "to_local")
-                else native_parameter.grad
-            )
+            for p in self.expected_shapes
+        ]
+        reference_handles = [
+            getattr(wrapped_reference, p.split(".")[0]).register_full_backward_pre_hook(reference_backward_pre_hook)
+            for p in self.expected_shapes
+        ]
 
-            assert custom_grad_local.shape == native_grad_local.shape == expected_local_shape, (
-                f"Rank {self.rank}: Post-backward {parameter_name}.grad shape mismatch - Custom "
-                f"{custom_grad_local.shape}, Native FSDP2 {native_grad_local.shape}"
-            )
+        dummy_input = torch.randn(2, self.base_model.input_dim, device=self.device, requires_grad=True)
+        wrapped_custom(dummy_input).sum().backward()
 
-            # 3. Gradient value parity (Reduce-Scatter numerical parity)
-            torch.testing.assert_close(
-                custom_grad_local,
-                native_grad_local,
-                msg=f"Rank {self.rank}: Post-backward {parameter_name}.grad values diverged from Native FSDP2",
-            )
+        dummy_input_reference = dummy_input.clone().detach().requires_grad_(True)
+        wrapped_reference(dummy_input_reference).sum().backward()
+
+        for h in custom_handles + reference_handles:
+            h.remove()
+
+        for parameter_name, (global_shape, _) in self.expected_shapes.items():
+            assert custom_shapes_during_backward.get(parameter_name) == global_shape
+            assert reference_shapes_during_backward.get(parameter_name) == global_shape
+
+    def test_backward_gradients_are_reduce_scattered_parity(self) -> None:
+        """5. Verifies that gradients are reduce-scattered to local sharded shapes matching Native FSDP2."""
+        wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
+        wrapped_reference = _reference_fully_shard_model(copy.deepcopy(self.base_model), self.device_mesh)
+
+        dummy_input = torch.randn(2, self.base_model.input_dim, device=self.device, requires_grad=True)
+        wrapped_custom(dummy_input).sum().backward()
+
+        dummy_input_reference = dummy_input.clone().detach().requires_grad_(True)
+        wrapped_reference(dummy_input_reference).sum().backward()
+
+        for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
+            layer_name, attr = parameter_name.split(".")
+            custom_param = getattr(getattr(wrapped_custom.inner_module, layer_name), attr)
+            reference_param = getattr(getattr(wrapped_reference, layer_name), attr)
+
+            assert custom_param.grad is not None
+            assert reference_param.grad is not None
+
+            custom_grad_local = custom_param.grad.to_local()
+            reference_grad_local = reference_param.grad.to_local()
+
+            assert custom_grad_local.shape == reference_grad_local.shape == expected_local_shape
+            torch.testing.assert_close(custom_grad_local, reference_grad_local, rtol=1e-5, atol=1e-8)
+
+    def test_parameters_resharded_after_backward_parity(self) -> None:
+        """6. Verifies that parameters are resharded back to local shapes after backward in both models."""
+        wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
+        wrapped_reference = _reference_fully_shard_model(copy.deepcopy(self.base_model), self.device_mesh)
+
+        dummy_input = torch.randn(2, self.base_model.input_dim, device=self.device, requires_grad=True)
+        wrapped_custom(dummy_input).sum().backward()
+
+        dummy_input_reference = dummy_input.clone().detach().requires_grad_(True)
+        wrapped_reference(dummy_input_reference).sum().backward()
+
+        for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
+            layer_name, attr = parameter_name.split(".")
+            custom_param = getattr(getattr(wrapped_custom.inner_module, layer_name), attr)
+            reference_param = getattr(getattr(wrapped_reference, layer_name), attr)
+
+            assert custom_param.to_local().shape == expected_local_shape
+            assert reference_param.to_local().shape == expected_local_shape
+            assert not wrapped_custom.sharded_parameters[parameter_name].is_gathered
 
 
 @pytest.mark.multi_rank(world_size=2)
-class TestLossParity(DistributedTestBase):
-    def test_loss_parity(self):
-        # Make deepcopies so both FSDP implementations start from identical parameters
-        edu_raw_model = copy.deepcopy(self.base_model)
-        native_raw_model = copy.deepcopy(self.base_model)
+class TestConvergenceParity(DistributedTestBase):
+    """Verifies end-to-end training loop convergence parity against FSDP2."""
 
-        # 2. Wrap Models
-        # Educational FSDP (gloofsdp)
-        edu_model = FSDP(edu_raw_model, device_mesh=self.device_mesh)
-        edu_optimizer = torch.optim.SGD(edu_model.parameters(), lr=0.01)
+    def test_multi_step_training_convergence_parity(self) -> None:
+        """Verifies forward outputs and loss values match Native FSDP2 over a 5-step SGD training loop."""
+        wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
+        custom_optimizer = torch.optim.SGD(wrapped_custom.parameters(), lr=0.01)
 
-        # PyTorch Native FSDP
-        native_model = fully_shard(native_raw_model, mesh=self.device_mesh)
-        native_optimizer = torch.optim.SGD(native_model.parameters(), lr=0.01)
+        reference_raw = copy.deepcopy(self.base_model)
+        fully_shard(reference_raw.fc1, mesh=self.device_mesh)
+        fully_shard(reference_raw.fc2, mesh=self.device_mesh)
+        wrapped_reference = fully_shard(reference_raw, mesh=self.device_mesh)
+        reference_optimizer = torch.optim.SGD(wrapped_reference.parameters(), lr=0.01)
 
-        # 3. Create Deterministic Per-Rank Input Data & Target Data
-        # Fixed seed for inputs so run-to-run comparisons are identical
         torch.manual_seed(100 + self.rank)
-        # requires_grad=True is required for the input tensor because module-level backward
-        # hooks (register_full_backward_pre_hook) on the first layer need an entry autograd node.
-        # Without it, autograd prunes the input graph edge and emits a UserWarning when firing
-        # backward hooks at the output node instead.
         batch_size = 2
         x = torch.randn(batch_size, self.base_model.input_dim, device=self.device, requires_grad=True)
         target = torch.randn(batch_size, self.base_model.output_dim, device=self.device)
         criterion = nn.MSELoss()
 
-        print(f"[Rank {self.rank}] Running 5-step convergence comparison...")
-
-        # 4. Training Step Verification Loop
         for step in range(1, 6):
-            # --- Educational FSDP Step ---
-            edu_optimizer.zero_grad()
-            edu_out = edu_model(x)
+            custom_optimizer.zero_grad()
+            edu_out = wrapped_custom(x)
             edu_loss = criterion(edu_out, target)
             edu_loss.backward()
-            edu_optimizer.step()
+            custom_optimizer.step()
 
-            # --- Native PyTorch FSDP Step ---
-            native_optimizer.zero_grad()
-            native_out = native_model(x)
-            native_loss = criterion(native_out, target)
-            native_loss.backward()
-            native_optimizer.step()
+            reference_optimizer.zero_grad()
+            reference_out = wrapped_reference(x)
+            reference_loss = criterion(reference_out, target)
+            reference_loss.backward()
+            reference_optimizer.step()
 
-            # --- Assertions & Checks ---
-            # A. Check Forward Pass Output Matching
-            output_diff = torch.abs(edu_out - native_out).max().item()
+            output_diff = torch.abs(edu_out - reference_out).max().item()
+            loss_diff = abs(edu_loss.item() - reference_loss.item())
 
-            # B. Check Loss Value Matching
-            loss_diff = abs(edu_loss.item() - native_loss.item())
-
-            print(f"[Rank {self.rank}] Step {step} | Forward Max Diff: {output_diff:.2e} | Loss Diff: {loss_diff:.2e}")
-
-            # Tolerances for FP32 eager operations
             assert output_diff < 1e-5, f"Forward output diverged at step {step}!"
             assert loss_diff < 1e-5, f"Loss value diverged at step {step}!"
