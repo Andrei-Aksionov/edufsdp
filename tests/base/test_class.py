@@ -18,10 +18,15 @@ class SimpleMLP(nn.Module):
 
     def __init__(self) -> None:
         super().__init__()
+
+        self.input_dim = 16
+        self.hidden_dim = 4
+        self.output_dim = 8
+
         # Weight shape: (out_features=4, in_features=16) -> Shard shape on 2 ranks: (2, 16)
-        self.fc1 = nn.Linear(16, 4, bias=False)
+        self.fc1 = nn.Linear(self.input_dim, self.hidden_dim, bias=False)
         # Weight shape: (out_features=8, in_features=4) -> Shard shape on 2 ranks: (4, 4)
-        self.fc2 = nn.Linear(4, 8, bias=False)
+        self.fc2 = nn.Linear(self.hidden_dim, self.output_dim, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Executes forward pass through linear layers.
@@ -46,11 +51,11 @@ class DistributedTestBase:
         self.rank = dist.get_rank()
         self.world_size = dist.get_world_size()
         self.device = torch.device("cpu")
-        self.device_mesh = init_device_mesh("cpu", (self.world_size,))
+        self.device_mesh = init_device_mesh(str(self.device), (self.world_size,))
 
         # Identical seed guarantees identical baseline parameters on every rank
         torch.manual_seed(42)
-        self.base_model = SimpleMLP()
+        self.base_model = SimpleMLP().to(self.device)
 
         # Target expected tensor shapes: parameter_name -> (global_shape, local_shard_shape)
         self.expected_shapes = {
@@ -63,3 +68,9 @@ class DistributedTestBase:
                 torch.Size([8 // self.world_size, 4]),
             ),
         }
+
+    def teardown_method(self, method: Any) -> None:
+        """Synchronizes workers and tears down Gloo process group."""
+        if dist.is_initialized():
+            dist.barrier()
+            dist.destroy_process_group()
