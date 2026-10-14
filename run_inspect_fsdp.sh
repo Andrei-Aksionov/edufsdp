@@ -10,4 +10,4 @@ torchrun \
   --show-memory-training \
   --show-memory-checkpoint
 
-  # NOTE: To disable boolean flags add a `no-` prefix, e.g. --no-show-memory-training
+  # To disable boolean flags add a `no-` prefix, e.g. --no-show-memory-training

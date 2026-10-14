@@ -3,19 +3,18 @@
 target-version = "py314"
 preview = true  # Enables preview rules like DOC
 
-# TODO: uncomment D, DOC, ERA001 and T201 before making the repo public
 lint.select = [
   "ANN", # flake8-annotations
   "ARG001", # Unused function argument
-  # "D", # pydocstule
-  # "DOC", # pydoclint
+  "D", # pydocstule
+  "DOC", # pydoclint
   "C4", # flake8-comprehensions
   "E", # pycodestyle Error
-  # "ERA001", # commented-out-code
+  "ERA001", # commented-out-code
   "F", # PyFlakes
   "I001", # isort: unsorted-imports
   "PT", # flake8-pytest-style
-  # "T201", # `print` found
+  "T201", # `print` found
   "RET", # flake8-return
   "S", # flake8-bandit
   "SIM", # flake8-simplify
@@ -51,6 +50,9 @@ line-length = 120
 "__init__.py" = [
   "I001", # isort: unsorted-imports
   "F401", # imported but unused
+]
+"gloofsdp/logging.py" = [
+  "T201", # `print` found
 ]
 "*.ipynb" = [
   "T201", # `print` found

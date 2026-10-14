@@ -33,7 +33,8 @@ class StateDictManager:
         sharded_parameters: dict[str, ShardedParameter],
         state_dict_type: StateDictType = StateDictType.LOCAL,
     ) -> dict[str, torch.Tensor]:
-        """Extracts module state dictionary in either `LOCAL` or `FULL` format.
+        """
+        Extracts module state dictionary in either `LOCAL` or `FULL` format.
 
         Args:
             module: Target `nn.Module` wrapped by FSDP.
@@ -42,6 +43,7 @@ class StateDictManager:
 
         Returns:
             Map of parameter FQNs to local shards or full tensors.
+
         """
         state_dict: dict[str, torch.Tensor] = {}
 
@@ -73,7 +75,8 @@ class StateDictManager:
         state_dict: dict[str, torch.Tensor],
         state_dict_type: StateDictType = StateDictType.LOCAL,
     ) -> None:
-        """Loads a state dictionary checkpoint into sharded model parameters.
+        """
+        Loads a state dictionary checkpoint into sharded model parameters.
 
         Args:
             module: Target `nn.Module` wrapped by FSDP.
@@ -83,6 +86,7 @@ class StateDictManager:
 
         Raises:
             KeyError: If a parameter in `state_dict` does not exist in `module`.
+
         """
 
         module_named_parameters = dict(module.named_parameters())

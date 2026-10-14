@@ -25,10 +25,11 @@ class MLP(nn.Module):
     This network is purposely kept small with distinct input/hidden/output dimensions
     to make parameter shape tracking easy when sharding across multi-rank nodes.
 
-    NOTE: layer dimensions are selected automatically based on the number of ranks.
+    Layer dimensions are selected automatically based on the number of ranks.
     """
 
     def __init__(self) -> None:
+        """Initializes linear layers with dimensions scaled by the distributed world size."""
         super().__init__()
 
         world_size = dist.get_world_size()
@@ -49,6 +50,7 @@ class MLP(nn.Module):
 
         Returns:
             Output tensor of shape `(batch_size, output_dim)`.
+
         """
         x = self.layer1(x)
         x = self.relu(x)

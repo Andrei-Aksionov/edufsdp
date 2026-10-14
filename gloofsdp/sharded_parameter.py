@@ -57,6 +57,7 @@ class ShardedParameter:
             module: Parent PyTorch module owning this parameter.
             parameter: Unsharded source parameter to split across ranks.
             device_mesh: PyTorch DeviceMesh defining rank layout.
+
         """
         self.fqn = fqn
         self.parameter_name = fqn.split(".")[-1]
@@ -86,24 +87,22 @@ class ShardedParameter:
 
     @property
     def local_shard(self) -> torch.Tensor:
-        """
-        Returns the raw, rank-local storage slice (`torch.Tensor`) backing the DTensor.
-        """
+        """Raw rank-local storage slice (`torch.Tensor`) backing the DTensor."""
+        # TODO: Property docstring should not start with a verb ("Returns")
         return self.dtensor.to_local()
 
     @property
     def is_gathered(self) -> bool:
-        """
-        `True` if the full unsharded tensor is currently attached to the parent module.
-        """
+        """`True` if the full unsharded tensor is currently attached to the parent module."""
         return self._gathered_tensor is not None
 
     @property
     def shape(self) -> torch.Size:
         """
-        Returns the active tensor shape depending on lifecycle state:
-          - GATHERED: Global shape (e.g., [24, 18])
-          - SHARDED: Local shard shape (e.g., [12, 18] on 2 ranks)
+        Active tensor shape depending on lifecycle state.
+
+        - GATHERED: Global shape (e.g., [24, 18])
+        - SHARDED: Local shard shape (e.g., [12, 18] on 2 ranks)
         """
         return self._gathered_tensor.shape if self.is_gathered else self.local_shard.shape
 
@@ -120,7 +119,8 @@ class ShardedParameter:
         contiguous tensors during forward and backward computations.
 
         Args:
-            Unsharded full-size tensor gathered across ranks.
+            full_tensor: Unsharded full-size tensor gathered across ranks.
+
         """
         self._gathered_tensor = full_tensor
         self.module.__dict__[self.parameter_name] = full_tensor

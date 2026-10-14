@@ -19,6 +19,15 @@ class ASCIIVisualizer:
     empty_char = "░"
 
     def __init__(self, bar_width: int = 18, rank: int = 0, world_size: int = 1) -> None:
+        """
+        Initializes ASCII visualizer dimensions and pre-renders rank layout bars.
+
+        Args:
+            bar_width: Character width of the output ASCII bar.
+            rank: Distributed rank index of current process.
+            world_size: Total process count in distributed mesh.
+
+        """
         self.bar_width = bar_width
         self.rank = rank
         self.world_size = world_size
@@ -45,12 +54,20 @@ class ASCIIVisualizer:
         return f"[{left_pad}{shard_segment}{right_pad}]"
 
     def render_shard_bar(self, is_gathered: bool) -> str:
-        """Renders a single fixed-width ASCII bar representing memory layout for a rank.
+        """
+        Renders a single fixed-width ASCII bar representing memory layout for a rank.
 
         Examples (world_size=2, bar_width=16):
         - Gathered full tensor: [████████████████]
         - Rank 0 local shard:   [████████░░░░░░░░]
         - Rank 1 local shard:   [░░░░░░░░████████]
+
+        Args:
+            is_gathered: Whether the target tensor is currently full or sharded.
+
+        Returns:
+            Formatted ASCII memory layout string enclosed in brackets.
+
         """
         return self.gathered_bar if is_gathered else self.non_gathered_bar
 
@@ -59,7 +76,17 @@ class ASCIIVisualizer:
         shape_before: torch.Size,
         shape_after: torch.Size,
     ) -> tuple[str, str]:
-        """Calculates transition state bars (before -> after) based on shape changes."""
+        """
+        Calculates transition state bars (before -> after) based on shape changes.
+
+        Args:
+            shape_before: Tensor dimensions prior to transition event.
+            shape_after: Tensor dimensions following transition event.
+
+        Returns:
+            Tuple containing formatted before and after ASCII layout strings.
+
+        """
         numel_before = shape_before.numel()
         numel_after = shape_after.numel()
 
@@ -80,6 +107,7 @@ class RankLogger:
     EVENT_COLUMN_WIDTH = 15
 
     def __init__(self) -> None:
+        """Initializes distributed rank logger with environment context and ASCII visualizer."""
         self.rank = int(os.environ.get("RANK", 0))
         self.world_size = int(os.environ.get("WORLD_SIZE", 1))
         self.last_layer_prefix: str | None = None
@@ -88,7 +116,16 @@ class RankLogger:
         self.visualizer = ASCIIVisualizer(rank=self.rank, world_size=self.world_size)
 
     def add_prefix_rank(self, message: str) -> str:
-        """Formats string with rank prefix."""
+        """
+        Formats string with rank prefix.
+
+        Args:
+            message: Raw log string.
+
+        Returns:
+            Formatted message prefixed with process rank details.
+
+        """
         return f"[Rank {self.rank}/{self.world_size}] {message}"
 
     def log(self, message: str) -> None:
@@ -133,7 +170,16 @@ class RankLogger:
             dist.barrier()
 
     def _extract_layer_prefix(self, parameter_name: str) -> str:
-        """Extracts top-level layer prefix from parameter FQN (e.g., 'layer1' from 'layer1.weight')."""
+        """
+        Extracts top-level layer prefix from parameter FQN (e.g., 'layer1' from 'layer1.weight').
+
+        Args:
+            parameter_name: Fully qualified parameter name.
+
+        Returns:
+            Extracted top-level layer attribute prefix.
+
+        """
         prefix, _, _ = parameter_name.partition(".")
         return prefix if prefix else parameter_name
 

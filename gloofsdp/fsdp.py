@@ -55,18 +55,20 @@ from gloofsdp.state_dict import StateDictManager, StateDictType
 
 
 class FSDP(nn.Module):
-    """
-    Fully Sharded Data Parallel wrapper designed for clarity and learning.
-
-    Wraps a PyTorch `nn.Module`, sharding its parameters across a `DeviceMesh`
-    and attaching custom autograd hooks to manage collective operations.
-
-    Args:
-        module: Target PyTorch module to shard and wrap.
-        device_mesh: PyTorch DeviceMesh defining process rank layout.
-    """
+    """Fully Sharded Data Parallel wrapper designed for clarity and learning."""
 
     def __init__(self, module: nn.Module, device_mesh: DeviceMesh) -> None:
+        """
+        Wraps a PyTorch `nn.Module`.
+
+        Shards its parameters across a `DeviceMesh` and attaches custom autograd
+        hooks to manage collective operations.
+
+        Args:
+            module: Target PyTorch module to shard and wrap.
+            device_mesh: PyTorch DeviceMesh defining process rank layout.
+
+        """
         super().__init__()
         self.inner_module = module
         self.device_mesh = device_mesh
@@ -86,6 +88,7 @@ class FSDP(nn.Module):
         Args:
             module: Current module instance in the traversal.
             prefix: Accumulated dot-separated FQN path (e.g., 'layer1.').
+
         """
         # 1. Post-order recursion: process child submodules first
         for child_name, child_module in module.named_children():
@@ -115,7 +118,17 @@ class FSDP(nn.Module):
             module.register_full_backward_hook(BackwardPostHook(sharded_parameter))
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
-        """Delegates forward pass execution to the inner wrapped module."""
+        """
+        Delegates forward pass execution to the inner wrapped module.
+
+        Args:
+            *args: Positional inputs passed to the inner module.
+            **kwargs: Keyword inputs passed to the inner module.
+
+        Returns:
+            Output computation graph produced by the inner module forward pass.
+
+        """
         return self.inner_module(*args, **kwargs)
 
     @property
@@ -145,6 +158,7 @@ class FSDP(nn.Module):
 
         Returns:
             Map of parameter FQNs to tensor shards or gathered full tensors.
+
         """
         return StateDictManager.get_state_dict(self.inner_module, self.sharded_parameters, state_dict_type)
 
@@ -159,5 +173,6 @@ class FSDP(nn.Module):
         Args:
             state_dict: Checkpoint mapping parameter names to tensors.
             state_dict_type: Format of incoming state_dict (`LOCAL` or `FULL`).
+
         """
         StateDictManager.load_state_dict(self.inner_module, self.sharded_parameters, state_dict, state_dict_type)

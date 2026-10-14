@@ -1,4 +1,5 @@
-"""Autograd and module execution hooks for Educational FSDP.
+"""
+Autograd and module execution hooks for Educational FSDP.
 
 Provides:
 1. `FSDPAllGatherFunction`: Standard `torch.autograd.Function` handling All-Gather and Reduce-Scatter.
@@ -45,7 +46,8 @@ class FSDPAllGatherFunction(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx: Any, local_parameter: torch.Tensor, sharded_parameter: ShardedParameter) -> torch.Tensor:
-        """Gathers rank-local parameter shards into the full global parameter.
+        """
+        Gathers rank-local parameter shards into the full global parameter.
 
         By receiving ``local_parameter`` explicitly as a tensor argument alongside the
         ``sharded_parameter`` metadata container, PyTorch autograd can directly track
@@ -59,6 +61,7 @@ class FSDPAllGatherFunction(torch.autograd.Function):
 
         Returns:
             The reconstructed global parameter tensor assembled via All-Gather.
+
         """
         ctx.parameter = sharded_parameter
 
@@ -86,7 +89,8 @@ class FSDPAllGatherFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx: Any, grad_output: torch.Tensor) -> tuple[torch.Tensor, None]:
-        """Reduces incoming full global gradients into rank-local gradient shards.
+        """
+        Reduces incoming full global gradients into rank-local gradient shards.
 
         Applies a Reduce-Scatter collective across the process group to aggregate and
         shard accumulated gradients.
@@ -98,6 +102,7 @@ class FSDPAllGatherFunction(torch.autograd.Function):
         Returns:
             Rank-local sharded gradient tensor scaled by world size,
             and None matching non-tensor metadata argument from forward pass.
+
         """
         parameter: ShardedParameter = ctx.parameter
 
@@ -139,7 +144,8 @@ class FSDPAllGatherFunction(torch.autograd.Function):
 
 
 class ForwardPreHook:
-    """Module pre-forward hook that gathers parameter shards before computation starts.
+    """
+    Module pre-forward hook that gathers parameter shards before computation starts.
 
     Triggers immediately prior to `nn.Module.forward()`. Reconstructs full-sized
     weight and bias tensors from local 1/N shards via `FSDPAllGatherFunction`, updating
@@ -147,9 +153,17 @@ class ForwardPreHook:
     """
 
     def __init__(self, sharded_parameter: ShardedParameter) -> None:
+        """
+        Initializes the hook with its target sharded parameter.
+
+        Args:
+            sharded_parameter: Target sharded parameter instance managed by this hook.
+
+        """
         self.sharded_parameter = sharded_parameter
 
     def __call__(self, module: nn.Module, inputs: Any) -> None:
+        """Executes parameter all-gather before forward pass execution."""
         if self.sharded_parameter.is_gathered:
             return
 
@@ -164,7 +178,8 @@ class ForwardPreHook:
 
 
 class ForwardPostHook:
-    """Module post-forward hook that releases full parameters immediately after computation finishes.
+    """
+    Module post-forward hook that releases full parameters immediately after computation finishes.
 
     Triggers immediately after `nn.Module.forward()` returns. Releases allocated full
     parameter tensors, reverting `ShardedParameter` back to 1/N local storage to minimize
@@ -172,9 +187,17 @@ class ForwardPostHook:
     """
 
     def __init__(self, sharded_parameter: ShardedParameter) -> None:
+        """
+        Initializes the hook with its target sharded parameter.
+
+        Args:
+            sharded_parameter: Target sharded parameter instance managed by this hook.
+
+        """
         self.sharded_parameter = sharded_parameter
 
     def __call__(self, module: nn.Module, args: tuple[Any, ...], output: Any) -> None:
+        """Frees gathered full parameters after forward pass execution."""
         before_shape = self.sharded_parameter.shape
         self.sharded_parameter.set_sharded()
         after_shape = self.sharded_parameter.shape
@@ -188,7 +211,8 @@ class ForwardPostHook:
 
 
 class BackwardPreHook:
-    """Module backward pre-hook that re-gathers full weights for gradient calculations.
+    """
+    Module backward pre-hook that re-gathers full weights for gradient calculations.
 
     Triggers during `torch.autograd.backward()` right before backpropagation traverses
     through this specific layer. Re-executes All-Gather to supply full parameters
@@ -196,9 +220,17 @@ class BackwardPreHook:
     """
 
     def __init__(self, sharded_parameter: ShardedParameter) -> None:
+        """
+        Initializes the hook with its target sharded parameter.
+
+        Args:
+            sharded_parameter: Target sharded parameter instance managed by this hook.
+
+        """
         self.sharded_parameter = sharded_parameter
 
     def __call__(self, module: nn.Module, grad_output: Any) -> None:
+        """Executes parameter all-gather before layer backward pass execution."""
         if self.sharded_parameter.is_gathered:
             return
 
@@ -211,16 +243,25 @@ class BackwardPreHook:
 
 
 class BackwardPostHook:
-    """Module backward post-hook that frees gathered parameters after gradient computations.
+    """
+    Module backward post-hook that frees gathered parameters after gradient computations.
 
     Triggers after layer gradient calculations complete. Releases full parameter memory,
     leaving only sharded 1/N local parameters and 1/N local gradient shards in device memory.
     """
 
     def __init__(self, sharded_parameter: ShardedParameter) -> None:
+        """
+        Initializes the hook with its target sharded parameter.
+
+        Args:
+            sharded_parameter: Target sharded parameter instance managed by this hook.
+
+        """
         self.sharded_parameter = sharded_parameter
 
     def __call__(self, module: nn.Module, grad_input: tuple, grad_output: tuple) -> None:
+        """Frees gathered full parameters after layer backward pass execution."""
         before_shape = self.sharded_parameter.shape
         self.sharded_parameter.set_sharded()
         after_shape = self.sharded_parameter.shape

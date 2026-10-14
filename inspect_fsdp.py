@@ -27,7 +27,8 @@ from gloofsdp.state_dict import StateDictType
 
 
 def init_distributed() -> None:
-    """Initializes default Gloo distributed environment and process group.
+    """
+    Initializes default Gloo distributed environment and process group.
 
     Sets required rendezvous environment variables (`MASTER_ADDR`, `MASTER_PORT`)
     and configures OS-specific socket interfaces (`GLOO_SOCKET_IFNAME`, `TP_SOCKET_IFNAME`)
@@ -52,7 +53,8 @@ def init_distributed() -> None:
 
 @contextmanager
 def log_hooks_enabled(enabled: bool = True) -> Generator[None, None, None]:
-    """Context manager to safely toggle hook logging during a code block.
+    """
+    Context manager to safely toggle hook logging during a code block.
 
     Args:
         enabled (bool): If True, enables `logger.log_hooks` for the duration of the context
@@ -61,6 +63,7 @@ def log_hooks_enabled(enabled: bool = True) -> Generator[None, None, None]:
 
     Yields:
         None
+
     """
     if not enabled:
         yield
@@ -76,7 +79,8 @@ def log_hooks_enabled(enabled: bool = True) -> Generator[None, None, None]:
 
 
 def reduce_loss(local_loss: torch.Tensor) -> float:
-    """Computes mean loss across all distributed process ranks for logging.
+    """
+    Computes mean loss across all distributed process ranks for logging.
 
     Performs an `all_reduce` sum across all process group ranks using `dist.ReduceOp.SUM`,
     scales the resulting scalar tensor by the world size, and returns the reduced Python float.
@@ -86,6 +90,7 @@ def reduce_loss(local_loss: torch.Tensor) -> float:
 
     Returns:
         float: Mean global loss calculated across all ranks.
+
     """
     loss_tensor = local_loss.detach().clone()
     dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
@@ -100,7 +105,8 @@ def run_train_step(
     inputs: torch.Tensor,
     targets: torch.Tensor,
 ) -> None:
-    """Executes a single forward and backward training step with optional hook visualization.
+    """
+    Executes a single forward and backward training step with optional hook visualization.
 
     Resets the logger step counter, executes model forward pass, reduces local and global
     loss values, backpropagates gradients, and updates model parameters using the optimizer.
@@ -111,6 +117,7 @@ def run_train_step(
         criterion (nn.Module): Loss criterion used to calculate local loss.
         inputs (torch.Tensor): Rank-local micro-batch input tensor.
         targets (torch.Tensor): Rank-local target tensor corresponding to local inputs.
+
     """
     logger.reset_layer_prefix()
 
@@ -140,11 +147,13 @@ def run_train_step(
 
 
 def check_sd_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) -> None:
-    """Validates state dict extraction and restoration across LOCAL and FULL formats.
+    """
+    Validates state dict extraction and restoration across LOCAL and FULL formats.
 
     Args:
         fsdp_model: Trained FSDP model instance.
         device_mesh: Distributed device mesh layout.
+
     """
     logger.log_section_header("State Dict Checkpoint Verification")
 
@@ -162,7 +171,13 @@ def check_sd_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    """Parses command-line arguments for training and memory logging."""
+    """
+    Configures command-line options for training steps and visual memory logs.
+
+    Returns:
+        Structured namespace containing parsed CLI options and runtime flags.
+
+    """
     parser = argparse.ArgumentParser(description="Educational FSDP Training Script")
     parser.add_argument(
         "--num-iterations",
@@ -192,7 +207,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Main execution entrypoint for the FSDP demonstration script.
+    """
+    Main execution entrypoint for the FSDP demonstration script.
 
     Parses command-line arguments, initializes the Gloo process group and device mesh,
     instantiates the sharded MLP model, prepares rank-local input shards for Data
