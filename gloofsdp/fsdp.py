@@ -6,42 +6,43 @@ and attaching pre/post execution hooks for automatic parameter gathering and fre
 
 Execution lifecycle for each submodule:
 
-            Forward Pass                                              Backward Pass
- ┌──────────────────────────────────────┐                  ┌──────────────────────────────────────┐
- │ ForwardPreHook                       │                  │ BackwardPreHook                      │
- │   --> all_gather()                   │                  │   --> all_gather()                   │
- │   Gathers weight & bias to full size │                  │   Gathers weight & bias to full size │
- │   [Full memory]                      │                  │   [Full memory]                      │
- └──────────────────┬───────────────────┘                  └──────────────────┬───────────────────┘
-                    │                                                         │
-                    ▼                                                         ▼
- ┌──────────────────────────────────────┐                  ┌──────────────────────────────────────┐
- │ Forward Compute                      │                  │ Backward Compute                     │
- │   Executes layer ops (e.g. F.linear) │                  │   Calculates weight, bias & input    │
- │   using unsharded full parameters    │                  │   gradients using full parameters    │
- └──────────────────┬───────────────────┘                  └──────────────────┬───────────────────┘
-                    │                                                         │
-                    ▼                                                         ▼
- ┌──────────────────────────────────────┐                  ┌──────────────────────────────────────┐
- │ ForwardPostHook                      │                  │ reduce_scatter()                     │
- │   --> free()                         │                  │   Averages & shards weight & bias    │
- │   Drops full weight & bias tensors,  │                  │   gradients across ranks into local  │
- │   restoring DTensors [1/N memory]    │                  │   1/N DTensor shard buffers          │
- └──────────────────────────────────────┘                  └──────────────────┬───────────────────┘
-                                                                              │
-                                                                              ▼
-                                                           ┌──────────────────────────────────────┐
-                                                           │ BackwardPostHook                     │
-                                                           │   --> free()                         │
-                                                           │   Drops full weight & bias tensors,  │
-                                                           │   restoring DTensors [1/N memory]    │
-                                                           └──────────────────────────────────────┘
+            Forward Pass                                          Backward Pass
+ ┌──────────────────────────────────────┐              ┌──────────────────────────────────────┐
+ │ ForwardPreHook                       │              │ BackwardPreHook                      │
+ │   --> all_gather()                   │              │   --> all_gather()                   │
+ │   Gathers weight & bias to full size │              │   Gathers weight & bias to full size │
+ │   [Full memory]                      │              │   [Full memory]                      │
+ └──────────────────┬───────────────────┘              └──────────────────┬───────────────────┘
+                    │                                                     │
+                    ▼                                                     ▼
+ ┌──────────────────────────────────────┐              ┌──────────────────────────────────────┐
+ │ Forward Compute                      │              │ Backward Compute                     │
+ │   Executes layer ops (e.g. F.linear) │              │   Calculates weight, bias & input    │
+ │   using unsharded full parameters    │              │   gradients using full parameters    │
+ └──────────────────┬───────────────────┘              └──────────────────┬───────────────────┘
+                    │                                                     │
+                    ▼                                                     ▼
+ ┌──────────────────────────────────────┐              ┌──────────────────────────────────────┐
+ │ ForwardPostHook                      │              │ reduce_scatter()                     │
+ │   --> free()                         │              │   Averages & shards weight & bias    │
+ │   Drops full weight & bias tensors,  │              │   gradients across ranks into local  │
+ │   restoring DTensors [1/N memory]    │              │   1/N DTensor shard buffers          │
+ └──────────────────────────────────────┘              └──────────────────┬───────────────────┘
+                                                                          │
+                                                                          ▼
+                                                       ┌──────────────────────────────────────┐
+                                                       │ BackwardPostHook                     │
+                                                       │   --> free()                         │
+                                                       │   Drops full weight & bias tensors,  │
+                                                       │   restoring DTensors [1/N memory]    │
+                                                       └──────────────────────────────────────┘
 """
 
-from typing import Any, Dict
+from collections.abc import Mapping
+from typing import Any, Generic, TypeVar
 
-import torch
 import torch.nn as nn
+from torch import Tensor
 from torch.distributed.device_mesh import DeviceMesh
 
 from gloofsdp.hooks import (
@@ -53,16 +54,28 @@ from gloofsdp.hooks import (
 from gloofsdp.sharded_parameter import ShardedParameter
 from gloofsdp.state_dict import StateDictManager, StateDictType
 
+ModuleT = TypeVar("ModuleT", bound=nn.Module)
 
-class FSDP(nn.Module):
-    """Fully Sharded Data Parallel wrapper designed for clarity and learning."""
 
-    def __init__(self, module: nn.Module, device_mesh: DeviceMesh) -> None:
+class FSDP(nn.Module, Generic[ModuleT]):
+    """
+    Fully Sharded Data Parallel wrapper over a PyTorch `nn.Module`.
+
+    Shards module parameters across a process group `DeviceMesh` using a
+    centralized registry and manages collective operations (`all_gather`,
+    `reduce_scatter`) via autograd hooks.
+
+    Attributes:
+        inner_module (ModuleT): Wrapped target module instance.
+        device_mesh (DeviceMesh): PyTorch DeviceMesh defining process rank topology.
+        sharded_parameters (dict[str, ShardedParameter]): Centralized registry
+            mapping parameter FQNs to their corresponding passive wrappers.
+
+    """
+
+    def __init__(self, module: ModuleT, device_mesh: DeviceMesh) -> None:
         """
-        Wraps a PyTorch `nn.Module`.
-
-        Shards its parameters across a `DeviceMesh` and attaches custom autograd
-        hooks to manage collective operations.
+        Initializes FSDP wrapper and shards child parameters.
 
         Args:
             module: Target PyTorch module to shard and wrap.
@@ -70,9 +83,10 @@ class FSDP(nn.Module):
 
         """
         super().__init__()
-        self.inner_module = module
+        self.inner_module: ModuleT = module
         self.device_mesh = device_mesh
 
+        self.sharded_parameters: dict[str, ShardedParameter] = {}
         # Single-pass transformation: shards parameters & registers hooks in one go
         self._wrap_module_tree(self.inner_module)
 
@@ -95,21 +109,17 @@ class FSDP(nn.Module):
             child_prefix = f"{prefix}{child_name}." if prefix else f"{child_name}."
             self._wrap_module_tree(child_module, prefix=child_prefix)
 
-        # Dictionary attached to submodule storing local parameter wrappers
-        module._fsdp_sharded_parameters = {}
-
         # 2. Process parameters owned directly by this module instance
         for parameter_name, parameter in list(module.named_parameters(recurse=False)):
-            full_name = f"{prefix}{parameter_name}" if prefix else parameter_name
+            fqn = f"{prefix}{parameter_name}" if prefix else parameter_name
 
             sharded_parameter = ShardedParameter(
-                fqn=full_name,
+                fqn=fqn,
                 module=module,
                 parameter=parameter,
                 device_mesh=self.device_mesh,
             )
-
-            module._fsdp_sharded_parameters[parameter_name] = sharded_parameter
+            self.sharded_parameters[fqn] = sharded_parameter
 
             # 3. Attach forward & backward hooks to trigger all_gather and free
             module.register_forward_pre_hook(ForwardPreHook(sharded_parameter))
@@ -131,48 +141,45 @@ class FSDP(nn.Module):
         """
         return self.inner_module(*args, **kwargs)
 
-    @property
-    def sharded_parameters(self) -> dict[str, ShardedParameter]:
-        """Dynamically collects all ShardedParameter objects across submodules by searching through module attributes."""
-        sharded_map: dict[str, ShardedParameter] = {}
-
-        for module_name, submodule in self.inner_module.named_modules():
-            # Check if this submodule holds any registered sharded parameter objects
-            if hasattr(submodule, "_fsdp_sharded_parameters"):
-                for parameter_name, parameter_wrapper in submodule._fsdp_sharded_parameters.items():
-                    # Construct fully qualified parameter name (e.g., 'layer1.weight')
-                    full_name = f"{module_name}.{parameter_name}" if module_name else parameter_name
-                    sharded_map[full_name] = parameter_wrapper
-
-        return sharded_map
-
     def state_dict(
         self,
+        *args: Any,
         state_dict_type: StateDictType = StateDictType.LOCAL,
-    ) -> Dict[str, torch.Tensor]:
+        **kwargs: Any,
+    ) -> dict[str, Tensor]:
         """
         Exports module state dict in either `LOCAL` (sharded) or `FULL` (unsharded) format.
 
         Args:
-            state_dict_type: Target format (StateDictType.LOCAL or StateDictType.FULL).
+            *args: Positional arguments matching `nn.Module.state_dict`.
+            state_dict_type: Target format (`StateDictType.LOCAL` or `StateDictType.FULL`).
+            **kwargs: Keyword arguments matching `nn.Module.state_dict` (prefix, keep_vars).
 
         Returns:
             Map of parameter FQNs to tensor shards or gathered full tensors.
 
         """
-        return StateDictManager.get_state_dict(self.inner_module, self.sharded_parameters, state_dict_type)
+        return StateDictManager.get_state_dict(
+            self.inner_module, self.sharded_parameters, state_dict_type
+        )
 
     def load_state_dict(
         self,
-        state_dict: Dict[str, torch.Tensor],
+        state_dict: Mapping[str, Tensor],
+        strict: bool = True,
+        assign: bool = False,
         state_dict_type: StateDictType = StateDictType.LOCAL,
-    ) -> Any:
+    ) -> None:
         """
         Loads state dictionary checkpoint into sharded parameters.
 
         Args:
             state_dict: Checkpoint mapping parameter names to tensors.
+            strict: Whether to strictly enforce key matching in state_dict.
+            assign: Whether to assign tensors directly rather than copying in-place.
             state_dict_type: Format of incoming state_dict (`LOCAL` or `FULL`).
 
         """
-        StateDictManager.load_state_dict(self.inner_module, self.sharded_parameters, state_dict, state_dict_type)
+        return StateDictManager.load_state_dict(
+            self.inner_module, self.sharded_parameters, state_dict, state_dict_type
+        )

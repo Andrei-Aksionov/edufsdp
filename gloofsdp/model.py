@@ -8,14 +8,14 @@ This simple Multi-Layer Perceptron (MLP) acts as a clean baseline to observe:
 
 Data Flow & Architecture:
 
-  Input [Batch, 18] ──> [Linear: 18 -> 24] ──> [ReLU] ──> [Linear: 24 -> 12] ──> Output [Batch, 12]
+Input [Batch, 18] ──> [Linear: 18->24] ──> [ReLU] ──> [Linear: 24->12] ──> Output [Batch, 12]
                             │                                  │
                    (Sharded across ranks)             (Sharded across ranks)
 """
 
-import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch import Tensor
 
 
 class MLP(nn.Module):
@@ -33,7 +33,7 @@ class MLP(nn.Module):
         super().__init__()
 
         world_size = dist.get_world_size()
-        self.input_dim = 3 * world_size
+        self.input_dim: int = 3 * world_size
         self.hidden_dim = 4 * world_size
         self.output_dim = 2 * world_size
 
@@ -41,7 +41,7 @@ class MLP(nn.Module):
         self.relu = nn.ReLU()
         self.layer2 = nn.Linear(self.hidden_dim, self.output_dim)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         """
         Executes forward pass.
 

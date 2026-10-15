@@ -44,7 +44,7 @@ lint.ignore = [
   "S603", # subprocess call: check for execution of untrusted input
 ]
 
-line-length = 120
+line-length = 95
 
 [lint.per-file-ignores]
 "__init__.py" = [

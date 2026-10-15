@@ -107,7 +107,7 @@ class RankLogger:
     EVENT_COLUMN_WIDTH = 15
 
     def __init__(self) -> None:
-        """Initializes distributed rank logger with environment context and ASCII visualizer."""
+        """Initializes distributed rank logger with ASCII visualizer."""
         self.rank = int(os.environ.get("RANK", 0))
         self.world_size = int(os.environ.get("WORLD_SIZE", 1))
         self.last_layer_prefix: str | None = None
@@ -163,7 +163,8 @@ class RankLogger:
         for rank in range(self.world_size):
             if self.rank == rank and message.strip():
                 formatted = "\n".join(
-                    self.add_prefix_rank(line) if add_rank_info else line for line in message.splitlines()
+                    self.add_prefix_rank(line) if add_rank_info else line
+                    for line in message.splitlines()
                 )
                 print(formatted, flush=True)
 
@@ -171,7 +172,7 @@ class RankLogger:
 
     def _extract_layer_prefix(self, parameter_name: str) -> str:
         """
-        Extracts top-level layer prefix from parameter FQN (e.g., 'layer1' from 'layer1.weight').
+        Extracts top-level layer prefix from the FQN (e.g., 'layer1' from 'layer1.weight').
 
         Args:
             parameter_name: Fully qualified parameter name.
@@ -208,7 +209,9 @@ class RankLogger:
 
         # Print section dividers when moving to a new module layer on rank 0
         if current_prefix != self.last_layer_prefix:
-            layer_name_text = f" {current_prefix} ".center(len(current_prefix) + self.LAYER_NAME_PREFIX_WIDTH * 2, "─")
+            layer_name_text = f" {current_prefix} ".center(
+                len(current_prefix) + self.LAYER_NAME_PREFIX_WIDTH * 2, "─"
+            )
             layer_name_text = f" {layer_name_text} ".center(self.LINE_WIDTH, " ")
             layer_name_text = f"\n{layer_name_text}\n"
             self.log_rank0(layer_name_text)

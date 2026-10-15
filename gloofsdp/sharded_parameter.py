@@ -22,10 +22,13 @@ Parameter lifecycle:
                  └──────────────────────────────────────────────┘
 """
 
+from typing import cast
+
 import torch
 import torch.nn as nn
+from torch import Tensor
 from torch.distributed.device_mesh import DeviceMesh
-from torch.distributed.tensor import Shard, distribute_tensor
+from torch.distributed.tensor import DTensor, Shard, distribute_tensor
 
 
 class ShardedParameter:
@@ -38,7 +41,7 @@ class ShardedParameter:
     Key Responsibilities:
       1. Shards full parameter data across a `DeviceMesh` along dimension 0 (`Shard(dim=0)`).
       2. Dynamically swaps module attributes between local `DTensor` shards and full
-         unsharded `torch.Tensor` instances during forward/backward steps.
+         unsharded `Tensor` instances during forward/backward steps.
       3. Provides memory-tracking properties (local shard sizes, global ranges).
     """
 
@@ -73,22 +76,28 @@ class ShardedParameter:
         # - Ensures `sharded_dtensor` is created as a clean leaf node (grad_fn=None).
         # ---------------------------------------------------------------------
         with torch.no_grad():
-            sharded_dtensor = distribute_tensor(parameter.data, device_mesh=self.device_mesh, placements=[Shard(dim=0)])
-            self.dtensor = nn.Parameter(
-                sharded_dtensor,
-                requires_grad=parameter.requires_grad,
+            sharded_dtensor = distribute_tensor(
+                parameter.data,
+                device_mesh=self.device_mesh,
+                placements=[Shard(dim=0)],
+            )
+            self.dtensor: DTensor = cast(
+                DTensor,
+                nn.Parameter(
+                    sharded_dtensor,
+                    requires_grad=parameter.requires_grad,
+                ),
             )
 
         # 2. Mount the DTensor Parameter directly on the target module attribute
         setattr(self.module, self.parameter_name, self.dtensor)
 
         # Reference holder for the full gathered tensor during execution
-        self._gathered_tensor: torch.Tensor | None = None
+        self._gathered_tensor: Tensor | None = None
 
     @property
-    def local_shard(self) -> torch.Tensor:
-        """Raw rank-local storage slice (`torch.Tensor`) backing the DTensor."""
-        # TODO: Property docstring should not start with a verb ("Returns")
+    def local_shard(self) -> Tensor:
+        """Raw rank-local storage slice (`Tensor`) backing the DTensor."""
         return self.dtensor.to_local()
 
     @property
@@ -104,14 +113,17 @@ class ShardedParameter:
         - GATHERED: Global shape (e.g., [24, 18])
         - SHARDED: Local shard shape (e.g., [12, 18] on 2 ranks)
         """
-        return self._gathered_tensor.shape if self.is_gathered else self.local_shard.shape
+        if self.is_gathered:
+            assert self._gathered_tensor is not None
+            return self._gathered_tensor.shape
+        return self.local_shard.shape
 
-    def set_unsharded(self, full_tensor: torch.Tensor) -> None:
+    def set_unsharded(self, full_tensor: Tensor) -> None:
         """
         Attaches the full gathered tensor to the parent module attribute.
 
         Standard `setattr(module, parameter_name, full_tensor)` invokes PyTorch's
-        `nn.Module.__setattr__`, which rejects assigning a plain `torch.Tensor`
+        `nn.Module.__setattr__`, which rejects assigning a plain `Tensor`
         to an existing `nn.Parameter` attribute.
 
         By assigning directly into `module.__dict__`, we bypass parameter type checks

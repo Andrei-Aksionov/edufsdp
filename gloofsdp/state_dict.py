@@ -6,10 +6,12 @@ Handles extracting and loading model state dictionaries in two formats:
 2. `FULL`: Saves/loads consolidated global parameters (unsharded).
 """
 
+from collections.abc import Mapping
 from enum import Enum
 
 import torch
 import torch.nn as nn
+from torch import Tensor
 from torch.distributed.tensor import Shard, distribute_tensor
 
 from gloofsdp.hooks import FSDPAllGatherFunction
@@ -32,7 +34,7 @@ class StateDictManager:
         module: nn.Module,
         sharded_parameters: dict[str, ShardedParameter],
         state_dict_type: StateDictType = StateDictType.LOCAL,
-    ) -> dict[str, torch.Tensor]:
+    ) -> dict[str, Tensor]:
         """
         Extracts module state dictionary in either `LOCAL` or `FULL` format.
 
@@ -45,7 +47,7 @@ class StateDictManager:
             Map of parameter FQNs to local shards or full tensors.
 
         """
-        state_dict: dict[str, torch.Tensor] = {}
+        state_dict: dict[str, Tensor] = {}
 
         for parameter_name, parameter in module.named_parameters():
             if parameter_name not in sharded_parameters:
@@ -56,9 +58,10 @@ class StateDictManager:
                 if state_dict_type == StateDictType.LOCAL:
                     tensor = parameter.local_shard
                 else:
+                    gathered = parameter._gathered_tensor
                     tensor = (
-                        parameter._gathered_tensor
-                        if parameter.is_gathered
+                        gathered
+                        if gathered is not None
                         else FSDPAllGatherFunction.apply(parameter.local_shard, parameter)
                     )
 
@@ -72,7 +75,7 @@ class StateDictManager:
     def load_state_dict(
         module: nn.Module,
         sharded_parameters: dict[str, ShardedParameter],
-        state_dict: dict[str, torch.Tensor],
+        state_dict: Mapping[str, Tensor],
         state_dict_type: StateDictType = StateDictType.LOCAL,
     ) -> None:
         """
@@ -93,7 +96,9 @@ class StateDictManager:
 
         for sd_name, sd_tensor in state_dict.items():
             if sd_name not in module_named_parameters:
-                raise KeyError(f"Parameter '{sd_name}' from state_dict cannot be found in the module.")
+                raise KeyError(
+                    f"Parameter '{sd_name}' from state_dict cannot be found in the module."
+                )
 
             # Handle non-sharded parameters
             if sd_name not in sharded_parameters:

@@ -18,6 +18,7 @@ from typing import Generator
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch import Tensor
 from torch.distributed.device_mesh import DeviceMesh, init_device_mesh
 
 from gloofsdp.fsdp import FSDP
@@ -78,7 +79,7 @@ def log_hooks_enabled(enabled: bool = True) -> Generator[None, None, None]:
         logger.reset_layer_prefix()
 
 
-def reduce_loss(local_loss: torch.Tensor) -> float:
+def reduce_loss(local_loss: Tensor) -> float:
     """
     Computes mean loss across all distributed process ranks for logging.
 
@@ -86,7 +87,7 @@ def reduce_loss(local_loss: torch.Tensor) -> float:
     scales the resulting scalar tensor by the world size, and returns the reduced Python float.
 
     Args:
-        local_loss (torch.Tensor): Local scalar loss tensor calculated on the current rank.
+        local_loss (Tensor): Local scalar loss tensor calculated on the current rank.
 
     Returns:
         float: Mean global loss calculated across all ranks.
@@ -102,8 +103,8 @@ def run_train_step(
     model: nn.Module,
     optimizer: torch.optim.Optimizer,
     criterion: nn.Module,
-    inputs: torch.Tensor,
-    targets: torch.Tensor,
+    inputs: Tensor,
+    targets: Tensor,
 ) -> None:
     """
     Executes a single forward and backward training step with optional hook visualization.
@@ -115,8 +116,8 @@ def run_train_step(
         model (nn.Module): FSDP-wrapped PyTorch module.
         optimizer (torch.optim.Optimizer): Optimizer instance attached to model parameters.
         criterion (nn.Module): Loss criterion used to calculate local loss.
-        inputs (torch.Tensor): Rank-local micro-batch input tensor.
-        targets (torch.Tensor): Rank-local target tensor corresponding to local inputs.
+        inputs (Tensor): Rank-local micro-batch input tensor.
+        targets (Tensor): Rank-local target tensor corresponding to local inputs.
 
     """
     logger.reset_layer_prefix()
@@ -146,7 +147,7 @@ def run_train_step(
     optimizer.step()
 
 
-def check_sd_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) -> None:
+def check_sd_loading(fsdp_model: FSDP, device_mesh: DeviceMesh) -> None:
     """
     Validates state dict extraction and restoration across LOCAL and FULL formats.
 
@@ -166,7 +167,9 @@ def check_sd_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) -> None:
 
         fresh_fsdp_model = FSDP(MLP(), device_mesh=device_mesh)
         fresh_fsdp_model.load_state_dict(sd, state_dict_type=sd_type)
-        logger.log_ordered(f"✓ Successfully loaded {sd_type.name.capitalize()} State Dict into fresh model instance")
+        logger.log_ordered(
+            f"✓ Successfully loaded {sd_type.name.capitalize()} State Dict into fresh model instance"
+        )
         logger.log_rank0("\n")
 
 
@@ -230,8 +233,12 @@ def main() -> None:
 
     # 2. Prepare a distinct shard of the total batch for each rank (Data Parallelism)
     batch_per_rank = 2
-    global_inputs = torch.randn(world_size * batch_per_rank, fsdp_model.inner_module.input_dim, requires_grad=True)
-    global_targets = torch.randn(world_size * batch_per_rank, fsdp_model.inner_module.output_dim)
+    global_inputs = torch.randn(
+        world_size * batch_per_rank, fsdp_model.inner_module.input_dim, requires_grad=True
+    )
+    global_targets = torch.randn(
+        world_size * batch_per_rank, fsdp_model.inner_module.output_dim
+    )
 
     # 3. Slice rank-local input batch
     start_idx = rank * batch_per_rank
@@ -242,7 +249,9 @@ def main() -> None:
     # 4. Execute training loop with selective memory logging
     for iter_idx in range(args.num_iterations):
         # Determine whether memory hooks should log during this iteration
-        should_log = args.show_memory_training and (not args.memory_first_iter_only or iter_idx == 0)
+        should_log = args.show_memory_training and (
+            not args.memory_first_iter_only or iter_idx == 0
+        )
 
         with log_hooks_enabled(enabled=should_log):
             run_train_step(fsdp_model, optimizer, criterion, local_inputs, local_targets)
