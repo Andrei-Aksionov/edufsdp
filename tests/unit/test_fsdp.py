@@ -140,7 +140,7 @@ class TestFSDP(DistributedTestBase):
         loss.backward()
 
         # 3. Verify gradients are correctly reduced and sharded across ranks
-        for fqn, sharded_parameter in fsdp_model.sharded_parameters.items():
+        for fqn in fsdp_model.sharded_parameters:
             parameter = getattr(fsdp_model.inner_module, fqn.split(".")[0]).weight
             assert parameter.grad is not None
             _, expected_local_shape = self.expected_shapes[fqn]

@@ -41,8 +41,8 @@ class ASCIIVisualizer:
 
         # Calculate character slots for this rank's shard slice
         slot_size = self.bar_width / self.world_size
-        start_slot = int(round(self.rank * slot_size))
-        end_slot = int(round((self.rank + 1) * slot_size))
+        start_slot = round(self.rank * slot_size)
+        end_slot = round((self.rank + 1) * slot_size)
         # Clamp slots to bounds
         start_slot = max(0, min(self.bar_width, start_slot))
         end_slot = max(start_slot, min(self.bar_width, end_slot))

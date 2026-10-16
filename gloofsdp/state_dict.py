@@ -6,8 +6,8 @@ Handles extracting and loading model state dictionaries in two formats:
 2. `FULL`: Saves/loads consolidated global parameters (unsharded).
 """
 
-from collections.abc import Mapping
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import torch
 import torch.nn as nn
@@ -15,7 +15,11 @@ from torch import Tensor
 from torch.distributed.tensor import Shard, distribute_tensor
 
 from gloofsdp.hooks import FSDPAllGatherFunction
-from gloofsdp.sharded_parameter import ShardedParameter
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from gloofsdp.sharded_parameter import ShardedParameter
 
 
 class StateDictType(Enum):
@@ -91,7 +95,6 @@ class StateDictManager:
             KeyError: If a parameter in `state_dict` does not exist in `module`.
 
         """
-
         module_named_parameters = dict(module.named_parameters())
 
         for sd_name, sd_tensor in state_dict.items():

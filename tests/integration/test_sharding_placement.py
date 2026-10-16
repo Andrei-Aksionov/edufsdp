@@ -94,7 +94,7 @@ class TestShardingPlacement(DistributedTestBase):
 
         pre_backward_parameter_shapes = {}
 
-        for parameter_name, (global_shape, _) in self.expected_shapes.items():
+        for parameter_name, *_ in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
             child_module = getattr(wrapped_model.inner_module, layer_name)
 

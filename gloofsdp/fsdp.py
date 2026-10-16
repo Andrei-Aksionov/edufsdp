@@ -38,12 +38,10 @@ Execution lifecycle for each submodule:
                                                        └──────────────────────────────────────┘
 """
 
-from collections.abc import Mapping
-from typing import Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any
 
 import torch.nn as nn
 from torch import Tensor
-from torch.distributed.device_mesh import DeviceMesh
 
 from gloofsdp.hooks import (
     BackwardPostHook,
@@ -54,10 +52,13 @@ from gloofsdp.hooks import (
 from gloofsdp.sharded_parameter import ShardedParameter
 from gloofsdp.state_dict import StateDictManager, StateDictType
 
-ModuleT = TypeVar("ModuleT", bound=nn.Module)
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from torch.distributed.device_mesh import DeviceMesh
 
 
-class FSDP(nn.Module, Generic[ModuleT]):
+class FSDP[ModuleT: nn.Module](nn.Module):
     """
     Fully Sharded Data Parallel wrapper over a PyTorch `nn.Module`.
 

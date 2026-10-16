@@ -22,13 +22,15 @@ Parameter lifecycle:
                  └──────────────────────────────────────────────┘
 """
 
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torch.distributed.device_mesh import DeviceMesh
 from torch.distributed.tensor import DTensor, Shard, distribute_tensor
+
+if TYPE_CHECKING:
+    from torch.distributed.device_mesh import DeviceMesh
 
 
 class ShardedParameter:
@@ -82,7 +84,7 @@ class ShardedParameter:
                 placements=[Shard(dim=0)],
             )
             self.dtensor: DTensor = cast(
-                DTensor,
+                "DTensor",
                 nn.Parameter(
                     sharded_dtensor,
                     requires_grad=parameter.requires_grad,

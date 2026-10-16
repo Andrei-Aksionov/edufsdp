@@ -9,11 +9,14 @@ import os
 import platform
 import socket
 from datetime import timedelta
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import pytest
 import torch
 from torch import distributed as dist
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def get_free_port() -> str:
@@ -93,7 +96,7 @@ def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> bool | None:
     # IPC serialization issues with evaluated complex objects across processes.
     kwargs: dict[str, Any] = {}
     if hasattr(pyfuncitem, "callspec"):
-        callspec: Any = getattr(pyfuncitem, "callspec")
+        callspec: Any = pyfuncitem.callspec
         kwargs = dict(callspec.params)
 
     # Spawn worker processes and wait for completion across all ranks

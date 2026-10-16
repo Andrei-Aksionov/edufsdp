@@ -130,7 +130,6 @@ class TestRankLoggerDistributed(DistributedTestBase):
         Verifies log_ordered prints strictly in rank order (Rank 0 then Rank 1) into a
         shared file.
         """
-
         test_logger = RankLogger()
 
         log_file_path = os.path.join(tempfile.gettempdir(), "gloofsdp_log_ordered_test.txt")
@@ -150,7 +149,7 @@ class TestRankLoggerDistributed(DistributedTestBase):
         dist.barrier()
 
         if self.rank == 0:
-            with open(log_file_path, "r") as shared_file:
+            with open(log_file_path) as shared_file:
                 lines = shared_file.readlines()
 
             msg_lines = [

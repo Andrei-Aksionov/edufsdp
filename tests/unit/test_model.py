@@ -76,6 +76,6 @@ class TestMLP:
             assert parameter.grad.shape == parameter.shape, (
                 f"Gradient shape mismatch for parameter {name}"
             )
-            assert not torch.all(parameter.grad == 0.0), (
+            assert not torch.all(torch.isclose(parameter.grad, torch.tensor(0.0))), (
                 f"Gradient is all zeros for parameter {name}"
             )

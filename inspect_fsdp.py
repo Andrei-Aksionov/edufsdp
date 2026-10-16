@@ -13,7 +13,7 @@ import argparse
 import os
 import platform
 from contextlib import contextmanager
-from typing import Generator
+from typing import TYPE_CHECKING
 
 import torch
 import torch.distributed as dist
@@ -25,6 +25,9 @@ from gloofsdp.fsdp import FSDP
 from gloofsdp.logging import logger
 from gloofsdp.model import MLP
 from gloofsdp.state_dict import StateDictType
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 
 def init_distributed() -> None:
@@ -53,7 +56,7 @@ def init_distributed() -> None:
 
 
 @contextmanager
-def log_hooks_enabled(enabled: bool = True) -> Generator[None, None, None]:
+def log_hooks_enabled(enabled: bool = True) -> Generator[None]:
     """
     Context manager to safely toggle hook logging during a code block.
 

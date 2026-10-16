@@ -203,7 +203,7 @@ class TestExecutionLifecycleParity(DistributedTestBase):
         )
 
         for parameter_name, (
-            global_shape,
+            _global_shape,
             expected_local_shape,
         ) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
@@ -230,7 +230,7 @@ class TestExecutionLifecycleParity(DistributedTestBase):
 
         def make_hook(model: nn.Module, shapes_dict: dict[str, Size]):
             def hook(module: nn.Module, _args: Any):
-                for parameter_name, _ in self.expected_shapes.items():
+                for parameter_name in self.expected_shapes:
                     layer_name, attr = parameter_name.split(".")
                     if module == getattr(model, layer_name):
                         param = getattr(module, attr)
@@ -307,7 +307,7 @@ class TestExecutionLifecycleParity(DistributedTestBase):
 
         def make_hook(model: nn.Module, shapes_dict: dict[str, Size]):
             def hook(module: nn.Module, _grad_output: Tensor | tuple[Tensor, ...]):
-                for parameter_name, _ in self.expected_shapes.items():
+                for parameter_name in self.expected_shapes:
                     layer_name, attr = parameter_name.split(".")
                     if module == getattr(model, layer_name):
                         param = getattr(module, attr)
@@ -430,7 +430,9 @@ class TestConvergenceParity(DistributedTestBase):
         reference_raw = copy.deepcopy(self.base_model)
         fully_shard(reference_raw.fc1, mesh=self.device_mesh)
         fully_shard(reference_raw.fc2, mesh=self.device_mesh)
-        wrapped_reference = cast(nn.Module, fully_shard(reference_raw, mesh=self.device_mesh))
+        wrapped_reference = cast(
+            "nn.Module", fully_shard(reference_raw, mesh=self.device_mesh)
+        )
         reference_optimizer = torch.optim.SGD(wrapped_reference.parameters(), lr=0.01)
 
         torch.manual_seed(100 + self.rank)

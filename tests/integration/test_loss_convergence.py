@@ -160,7 +160,7 @@ class TestCustomTrainingConvergence(DistributedTestBase):
 
         # 4. Verify zero_grad clears or resets gradients successfully
         self.optimizer.zero_grad()
-        for parameter_name, _ in self.expected_shapes.items():
+        for parameter_name in self.expected_shapes:
             layer_name, attr = parameter_name.split(".")
             parameter = getattr(getattr(self.wrapped_model.inner_module, layer_name), attr)
 

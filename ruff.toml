@@ -1,66 +1,75 @@
-# https://beta.ruff.rs/docs/rules/
+# https://docs.astral.sh/ruff/rules/
 
 target-version = "py314"
 preview = true  # Enables preview rules like DOC
 
 lint.select = [
-  "ANN", # flake8-annotations
-  "ARG001", # Unused function argument
-  "D", # pydocstule
-  "DOC", # pydoclint
-  "C4", # flake8-comprehensions
-  "E", # pycodestyle Error
-  "ERA001", # commented-out-code
-  "F", # PyFlakes
-  "I001", # isort: unsorted-imports
-  "PT", # flake8-pytest-style
-  "T201", # `print` found
-  "RET", # flake8-return
-  "S", # flake8-bandit
-  "SIM", # flake8-simplify
-  "W", # pycodestyle Warning
+  "commented-out-code",  # ERA001
+  "print",  # T201: `print` found
+  "unsorted-imports",  # I001
+  "unused-function-argument",  # ARG001
+
+  "ANN",  # flake8-annotations
+  "B",  # flake8-bugbear (bugs and design anti-patterns)
+  "C4",  # flake8-comprehensions
+  "D",  # pydocstyle
+  "DOC",  # pydoclint
+  "E",  # pycodestyle Error
+  "F",  # PyFlakes
+  "N",  # pep8-naming
+  "PERF",  # Perflint (performance anti-patterns)
+  "PIE",  # flake8-pie
+  "PT",  # flake8-pytest-style
+  "RET",  # flake8-return
+  "RUF",  # Ruff-specific rules (includes RUF100 unused ignores)
+  "S",  # flake8-bandit (security checks)
+  "SIM",  # flake8-simplify
+  "TC",  # flake8-type-checking (TYPE_CHECKING import optimization)
+  "UP",  # pyupgrade (modernize Python syntax)
+  "W",  # pycodestyle Warning
 ]
 
+
 lint.ignore = [
-  "ANN202", # Missing return type annotation for private function
-  "ANN204", # Missing return type annotation for special method `__init__`
-  "ANN401", # Dynamically typed expressions (typing.Any) are disallowed in `value`
-  "C408", # Unnecessary {obj_type} call (rewrite as a literal)
-  "D100", # Missing docstring in public module
-  "D101", # Missing docstring in public class
-  "D104", # Missing docstring in public package
-  "D202", # No blank lines allowed after function docstring
-  "D203", # one-blank-line-before-class (conflicts with D211)
-  "D212", # multi-line-summary-first-line (conflicts with D213)
-  "D401", # First line of docstring should be in imperative mood
-  "E402", # Module level import not at top of file
-  "E731", # Do not assign a lambda expression, use a def
-  "PT007", # Wrong values type in @pytest.mark.parametrize expected {values} of {row}
-  "S101", # assert detected
-  "S108", # Probable insecure usage of temporary file or directory: "{}"
-  "S113", # Probable use of requests call without timeout
-  "S310", # Audit URL open for permitted schemes. Allowing use of file: or custom schemes is often unexpected.
-  "S603", # subprocess call: check for execution of untrusted input
+  "any-type",  # ANN401: Dynamically typed expressions (typing.Any)
+  "assert",  # S101: assert detected
+  "blank-line-after-function",  # D202: No blank lines allowed after function docstring
+  "hardcoded-temp-file",  # S108: Probable insecure usage of temporary file or directory
+  "lambda-assignment",  # E731: Do not assign a lambda expression, use a def
+  "line-too-long",  # E501: Line too long ({width} > {limit} characters)
+  "missing-return-type-private-function",  # ANN202: Missing return type annotation for private function
+  "missing-return-type-special-method",  # ANN204: Missing return type annotation for special method `__init__`
+  "module-import-not-at-top-of-file",  # E402: Module level import not at top of file
+  "multi-line-summary-first-line",  # D212: multi-line-summary-first-line (conflicts with D213)
+  "non-imperative-mood",  # D401: First line of docstring should be in imperative mood
+  "incorrect-blank-line-before-class",  # D203: one-blank-line-before-class (conflicts with D211)
+  "pytest-parametrize-values-wrong-type",  # PT007: Wrong values type in @pytest.mark.parametrize
+  "request-without-timeout",  # S113: Probable use of requests call without timeout
+  "subprocess-without-shell-equals-true",  # S603: subprocess call: check for execution of untrusted input
+  "suspicious-url-open-usage",  # S310: Audit URL open for permitted schemes
+  "undocumented-public-class",  # D101: Missing docstring in public class
+  "undocumented-public-module",  # D100: Missing docstring in public module
+  "undocumented-public-package",  # D104: Missing docstring in public package
+  "unnecessary-collection-call",  # C408: Unnecessary {obj_type} call (rewrite as a literal)
 ]
 
 line-length = 95
 
 [lint.per-file-ignores]
 "__init__.py" = [
-  "I001", # isort: unsorted-imports
-  "F401", # imported but unused
+ "unsorted-imports",  # I001
+ "unused-import",  # F401
 ]
 "gloofsdp/logging.py" = [
-  "T201", # `print` found
+ "print",  # T201: `print` found
 ]
 "*.ipynb" = [
-  "T201", # `print` found
+ "print",  # T201: `print` found
 ]
 "tests/**" = [
-  "ANN", # Type annotations
-  "ARG001", # Unused function argument
-  # "D", # Disable all docstring rules for tests
-  "D205", # 1 blank line required between summary line and description
-  "DOC", # Disable all docstring rules for tests
-  "T201", # `print` found
+ "missing-blank-line-after-summary",  # 1 blank line required between summary line and description
+ "print",  # T201: `print` found
+ "unused-function-argument",
+ "ANN",  # Type annotations
+ "DOC",  # Disable all docstring rules for tests
 ]

@@ -30,7 +30,7 @@ BACKWARD PASS:
 
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.nn as nn
@@ -38,7 +38,9 @@ from torch import Tensor
 from torch.distributed.tensor import DTensor, Partial, Replicate, Shard
 
 from gloofsdp.logging import logger
-from gloofsdp.sharded_parameter import ShardedParameter
+
+if TYPE_CHECKING:
+    from gloofsdp.sharded_parameter import ShardedParameter
 
 
 class FSDPAllGatherFunction(torch.autograd.Function):
