@@ -15,7 +15,7 @@ from gloofsdp.state_dict import StateDictType
 from tests.base.test_class import DistributedTestBase
 
 
-@pytest.mark.multi_rank(world_size=2)
+@pytest.mark.multi_rank
 class TestFSDP(DistributedTestBase):
     """
     Test suite for FSDP wrapper tree wrapping, parameter collection, hook registration, and

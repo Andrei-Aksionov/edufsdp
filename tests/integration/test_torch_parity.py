@@ -25,7 +25,7 @@ def _reference_fully_shard_model(model: nn.Module, device_mesh) -> nn.Module:
     return model
 
 
-@pytest.mark.multi_rank(world_size=2)
+@pytest.mark.multi_rank
 class TestStateDictParity(DistributedTestBase):
     """
     Verifies state dictionary extraction parity (LOCAL and FULL) between EducationalFSDP and
@@ -76,7 +76,7 @@ class TestStateDictParity(DistributedTestBase):
             )
 
 
-@pytest.mark.multi_rank(world_size=2)
+@pytest.mark.multi_rank
 class TestDTensorStructureParity(DistributedTestBase):
     """
     Verifies DTensor property, placement, mesh, and gradient structure parity against
@@ -128,7 +128,7 @@ class TestDTensorStructureParity(DistributedTestBase):
             )
 
 
-@pytest.mark.multi_rank(world_size=2)
+@pytest.mark.multi_rank
 class TestOptimizerStateParity(DistributedTestBase):
     """Verifies optimizer state sharding and structure parity against FSDP2."""
 
@@ -185,7 +185,7 @@ class TestOptimizerStateParity(DistributedTestBase):
                 assert custom_tensor.shape == reference_tensor.shape == expected_local_shape
 
 
-@pytest.mark.multi_rank(world_size=2)
+@pytest.mark.multi_rank
 class TestExecutionLifecycleParity(DistributedTestBase):
     """
     Verifies strict parity of execution lifecycle state transitions between EducationalFSDP
@@ -415,7 +415,7 @@ class TestExecutionLifecycleParity(DistributedTestBase):
             assert not wrapped_custom.sharded_parameters[parameter_name].is_gathered
 
 
-@pytest.mark.multi_rank(world_size=2)
+@pytest.mark.multi_rank
 class TestConvergenceParity(DistributedTestBase):
     """Verifies end-to-end training loop convergence parity against FSDP2."""
 

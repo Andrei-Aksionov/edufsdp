@@ -9,7 +9,7 @@ from torch import distributed as dist
 from gloofsdp.model import MLP
 
 
-@pytest.mark.multi_rank(world_size=2)
+@pytest.mark.multi_rank
 class TestMLP:
     """
     Test suite verifying dynamic dimensions, weights,

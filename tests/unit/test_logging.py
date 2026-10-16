@@ -103,7 +103,7 @@ class TestRankLoggerUnit:
             )
 
 
-@pytest.mark.multi_rank(world_size=2)
+@pytest.mark.multi_rank
 class TestRankLoggerDistributed(DistributedTestBase):
     """Test suite for distributed logging functions requiring active process groups."""
 

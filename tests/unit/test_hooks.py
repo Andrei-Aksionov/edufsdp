@@ -19,7 +19,7 @@ from gloofsdp.sharded_parameter import ShardedParameter
 from tests.base.test_class import DistributedTestBase
 
 
-@pytest.mark.multi_rank(world_size=2)
+@pytest.mark.multi_rank
 class TestHooks(DistributedTestBase):
     """Test suite for autograd functions and execution hooks managing parameter lifecycles."""
 

@@ -13,7 +13,7 @@ from gloofsdp.fsdp import FSDP
 from tests.base.test_class import DistributedTestBase
 
 
-@pytest.mark.multi_rank(world_size=2)
+@pytest.mark.multi_rank
 class TestCustomDTensorLifecycle(DistributedTestBase):
     """
     Test suite covering static sharding, runtime weight DTensor placements,

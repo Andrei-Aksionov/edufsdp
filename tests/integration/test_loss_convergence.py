@@ -16,7 +16,7 @@ from gloofsdp.fsdp import FSDP
 from tests.base.test_class import DistributedTestBase
 
 
-@pytest.mark.multi_rank(world_size=2)
+@pytest.mark.multi_rank
 class TestCustomTrainingConvergence(DistributedTestBase):
     """
     Test suite covering end-to-end training execution, loss reduction,

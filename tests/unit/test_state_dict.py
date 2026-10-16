@@ -13,7 +13,7 @@ from gloofsdp.state_dict import StateDictManager, StateDictType
 from tests.base.test_class import DistributedTestBase
 
 
-@pytest.mark.multi_rank(world_size=2)
+@pytest.mark.multi_rank
 class TestStateDictManager(DistributedTestBase):
     """
     Test suite for StateDictManager handling local shards, full checkpoints,
