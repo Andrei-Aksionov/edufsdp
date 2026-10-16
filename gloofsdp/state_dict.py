@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torch.distributed.tensor import Shard, distribute_tensor
+from torch.distributed.tensor import DTensor, Shard, distribute_tensor
 
 from gloofsdp.hooks import FSDPAllGatherFunction
 
@@ -60,7 +60,7 @@ class StateDictManager:
                 parameter = sharded_parameters[parameter_name]
 
                 if state_dict_type == StateDictType.LOCAL:
-                    tensor = parameter.local_shard
+                    tensor = parameter.dtensor
                 else:
                     gathered = parameter._gathered_tensor
                     tensor = (
@@ -79,7 +79,7 @@ class StateDictManager:
     def load_state_dict(
         module: nn.Module,
         sharded_parameters: dict[str, ShardedParameter],
-        state_dict: Mapping[str, Tensor],
+        state_dict: Mapping[str, Tensor | DTensor],
         state_dict_type: StateDictType = StateDictType.LOCAL,
     ) -> None:
         """
@@ -112,8 +112,11 @@ class StateDictManager:
             parameter = sharded_parameters[sd_name]
 
             if state_dict_type == StateDictType.LOCAL:
-                # Copy incoming local shard directly into local buffer
-                parameter.local_shard.copy_(sd_tensor.to(parameter.local_shard.device))
+                # Handle incoming state dict tensor whether it is a DTensor or raw local Tensor
+                local_sd_tensor = (
+                    sd_tensor.to_local() if isinstance(sd_tensor, DTensor) else sd_tensor
+                )
+                parameter.local_shard.copy_(local_sd_tensor.to(parameter.local_shard.device))
 
             elif state_dict_type == StateDictType.FULL:
                 # Distribute global tensor across mesh to extract current rank's shard

@@ -7,6 +7,7 @@ import copy
 
 import pytest
 import torch
+from torch.distributed.tensor import DTensor
 
 from gloofsdp.fsdp import FSDP
 from gloofsdp.state_dict import StateDictManager, StateDictType
@@ -36,11 +37,12 @@ class TestStateDictManager(DistributedTestBase):
 
         for fqn, tensor in state_dict.items():
             _, expected_local_shape = self.expected_shapes[fqn]
-            assert tensor.shape == expected_local_shape
+            assert isinstance(tensor, DTensor)
+            assert tensor.to_local().shape == expected_local_shape
 
             # Verify values match local shard storage directly
             expected_local_shard = fsdp_model.sharded_parameters[fqn].local_shard
-            torch.testing.assert_close(tensor, expected_local_shard)
+            torch.testing.assert_close(tensor.to_local(), expected_local_shard)
 
     def test_get_state_dict_full_format_matches_baseline(self) -> None:
         """

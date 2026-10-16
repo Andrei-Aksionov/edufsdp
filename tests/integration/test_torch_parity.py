@@ -69,10 +69,13 @@ class TestStateDictParity(DistributedTestBase):
             "Local state dict keys mismatch between EducationalFSDP and Native FSDP!"
         )
         for key in custom_sd:
+            custom_value = custom_sd[key]
             reference_value = reference_sd[key]
+            assert isinstance(custom_value, DTensor)
             assert isinstance(reference_value, DTensor)
+
             torch.testing.assert_close(
-                custom_sd[key], reference_value.to_local(), rtol=1e-6, atol=1e-6
+                custom_value.to_local(), reference_value.to_local(), rtol=1e-6, atol=1e-6
             )
 
 
