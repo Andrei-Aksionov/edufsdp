@@ -7,6 +7,7 @@ import pytest
 import torch
 import torch.distributed as dist
 from torch import nn
+from torch.distributed.tensor import DTensor
 
 from gloofsdp.fsdp import FSDP
 from tests.base.test_class import DistributedTestBase
@@ -27,7 +28,9 @@ class TestCustomTrainingConvergence(DistributedTestBase):
         self.criterion = nn.MSELoss()
 
         torch.manual_seed(100 + self.rank)
-        self.x = torch.randn(2, self.base_model.input_dim, device=self.device, requires_grad=True)
+        self.x = torch.randn(
+            2, self.base_model.input_dim, device=self.device, requires_grad=True
+        )
         self.target = torch.randn(2, self.base_model.output_dim, device=self.device)
 
     def test_loss_decreases_across_steps(self) -> None:
@@ -56,15 +59,21 @@ class TestCustomTrainingConvergence(DistributedTestBase):
             output = self.wrapped_model(self.x)
             loss = self.criterion(output, self.target)
 
-            assert not torch.isnan(loss).item(), f"[Rank {self.rank}] Loss became NaN at step {step}!"
-            assert not torch.isinf(loss).item(), f"[Rank {self.rank}] Loss became Inf at step {step}!"
+            assert not torch.isnan(loss).item(), (
+                f"[Rank {self.rank}] Loss became NaN at step {step}!"
+            )
+            assert not torch.isinf(loss).item(), (
+                f"[Rank {self.rank}] Loss became Inf at step {step}!"
+            )
 
             loss.backward()
             self.optimizer.step()
 
     def test_parameters_update_after_optimization(self) -> None:
         """Verifies that model parameters actually change after an optimizer step."""
-        initial_params = {name: param.clone() for name, param in self.wrapped_model.named_parameters()}
+        initial_params = {
+            name: param.clone() for name, param in self.wrapped_model.named_parameters()
+        }
 
         self.optimizer.zero_grad()
         output = self.wrapped_model(self.x)
@@ -74,8 +83,16 @@ class TestCustomTrainingConvergence(DistributedTestBase):
 
         for name, current_param in self.wrapped_model.named_parameters():
             initial_param = initial_params[name]
-            curr_tensor = current_param.to_local() if hasattr(current_param, "to_local") else current_param
-            init_tensor = initial_param.to_local() if hasattr(initial_param, "to_local") else initial_param
+            curr_tensor = (
+                current_param.to_local()
+                if isinstance(current_param, DTensor)
+                else current_param
+            )
+            init_tensor = (
+                initial_param.to_local()
+                if isinstance(initial_param, DTensor)
+                else initial_param
+            )
 
             assert not torch.equal(curr_tensor, init_tensor), (
                 f"[Rank {self.rank}] Parameter {name} failed to update after optimizer step!"
@@ -92,7 +109,7 @@ class TestCustomTrainingConvergence(DistributedTestBase):
         single_pass_grads = {
             name: param.grad.to_local().clone()
             for name, param in self.wrapped_model.inner_module.named_parameters()
-            if param.grad is not None
+            if param.grad is not None and isinstance(param.grad, DTensor)
         }
 
         # 2. Run second backward pass without zeroing (accumulating gradients)
@@ -105,7 +122,9 @@ class TestCustomTrainingConvergence(DistributedTestBase):
             layer_name, attr = parameter_name.split(".")
             parameter = getattr(getattr(self.wrapped_model.inner_module, layer_name), attr)
 
-            assert parameter.grad is not None, f"Rank {self.rank}: {parameter_name}.grad is None after accumulation."
+            assert parameter.grad is not None, (
+                f"Rank {self.rank}: {parameter_name}.grad is None after accumulation."
+            )
 
             local_grad = parameter.grad.to_local()
 

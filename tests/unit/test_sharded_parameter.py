@@ -3,6 +3,7 @@
 import pytest
 import torch
 import torch.nn as nn
+from torch import Tensor
 from torch.distributed.tensor import DTensor
 
 from gloofsdp.sharded_parameter import ShardedParameter
@@ -17,12 +18,11 @@ class TestShardedParameter(DistributedTestBase):
         """Verifies initial DTensor conversion, local shard shapes, and module assignment."""
         layer = self.base_model.fc1
         fqn = "fc1.weight"
-        unsharded_weight = layer.weight
 
         sharded_parameter = ShardedParameter(
             fqn=fqn,
             module=layer,
-            parameter=unsharded_weight,
+            parameter=nn.Parameter(layer.weight),
             device_mesh=self.device_mesh,
         )
 
@@ -50,7 +50,7 @@ class TestShardedParameter(DistributedTestBase):
         sharded_parameter = ShardedParameter(
             fqn=fqn,
             module=layer,
-            parameter=layer.weight,
+            parameter=nn.Parameter(layer.weight),
             device_mesh=self.device_mesh,
         )
 
@@ -68,7 +68,7 @@ class TestShardedParameter(DistributedTestBase):
         assert sharded_parameter.is_gathered
         assert sharded_parameter.shape == global_shape
         assert layer.weight is fake_gathered_tensor
-        assert isinstance(layer.weight, torch.Tensor)
+        assert isinstance(layer.weight, Tensor)
         assert not isinstance(layer.weight, nn.Parameter)
 
         # 3. Restore local shard (sharded)
@@ -89,7 +89,7 @@ class TestShardedParameter(DistributedTestBase):
         sharded_parameter = ShardedParameter(
             fqn=fqn,
             module=layer,
-            parameter=layer.weight,
+            parameter=nn.Parameter(layer.weight),
             device_mesh=self.device_mesh,
         )
 

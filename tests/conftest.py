@@ -78,20 +78,20 @@ def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> bool | None:
     if not marker:
         return None  # Fall back to standard single-process pytest execution
 
-    world_size = marker.kwargs.get("world_size", 2)
-    port = get_free_port()
+    world_size: int = marker.kwargs.get("world_size", 2)
+    port: str = get_free_port()
 
     # Extract raw underlying function object and target test instance (if class method)
-    test_func = pyfuncitem.obj.__func__ if hasattr(pyfuncitem.obj, "__func__") else pyfuncitem.obj
-    test_instance = pyfuncitem.instance
+    test_obj: Any = pyfuncitem.obj
+    test_func = getattr(test_obj, "__func__", test_obj)
+    test_instance = getattr(pyfuncitem, "instance", None)
 
     # Extract raw parametrized values prior to fixture evaluation to prevent
     # IPC serialization issues with evaluated complex objects across processes.
-    kwargs = {
-        name: pyfuncitem._fixtureinfo.argvalues[name]
-        for name in pyfuncitem.fixturenames
-        if name in pyfuncitem._fixtureinfo.argnames
-    }
+    kwargs: dict[str, Any] = {}
+    if hasattr(pyfuncitem, "callspec"):
+        callspec: Any = getattr(pyfuncitem, "callspec")
+        kwargs = dict(callspec.params)
 
     # Spawn worker processes and wait for completion across all ranks
     torch.multiprocessing.spawn(

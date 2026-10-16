@@ -3,6 +3,7 @@
 import pytest
 import torch
 import torch.nn as nn
+from torch import Tensor
 
 from gloofsdp.hooks import (
     BackwardPostHook,
@@ -28,7 +29,7 @@ class TestHooks(DistributedTestBase):
         sharded_parameter = ShardedParameter(
             fqn=fqn,
             module=layer,
-            parameter=layer.weight,
+            parameter=nn.Parameter(layer.weight),
             device_mesh=self.device_mesh,
         )
 
@@ -59,7 +60,7 @@ class TestHooks(DistributedTestBase):
         sharded_parameter = ShardedParameter(
             fqn=fqn,
             module=layer,
-            parameter=layer.weight,
+            parameter=nn.Parameter(layer.weight),
             device_mesh=self.device_mesh,
         )
 
@@ -75,7 +76,7 @@ class TestHooks(DistributedTestBase):
 
         assert sharded_parameter.is_gathered
         assert sharded_parameter.shape == global_shape
-        assert isinstance(layer.weight, torch.Tensor)
+        assert isinstance(layer.weight, Tensor)
 
         # Re-triggering pre-hook when already gathered should be a no-op
         pre_hook(layer, (torch.randn(2, 16),))
@@ -97,7 +98,7 @@ class TestHooks(DistributedTestBase):
         sharded_parameter = ShardedParameter(
             fqn=fqn,
             module=layer,
-            parameter=layer.weight,
+            parameter=nn.Parameter(layer.weight),
             device_mesh=self.device_mesh,
         )
 

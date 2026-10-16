@@ -5,6 +5,7 @@ from typing import Any
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch import Tensor
 from torch.distributed.device_mesh import init_device_mesh
 
 
@@ -28,7 +29,7 @@ class SimpleMLP(nn.Module):
         # Weight shape: (out_features=8, in_features=4) -> Shard shape on 2 ranks: (4, 4)
         self.fc2 = nn.Linear(self.hidden_dim, self.output_dim, bias=False)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         """Executes forward pass through linear layers.
 
         Args:
