@@ -55,7 +55,7 @@ def _spawn_worker(
         backend="gloo",
         rank=rank,
         world_size=world_size,
-        timeout=timedelta(seconds=28),
+        timeout=timedelta(seconds=28),  # slightly shorter than pytest timeout
     )
 
     # Execute class methods with bound `self` instance, or plain functions directly
