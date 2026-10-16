@@ -1,4 +1,7 @@
-"""Unit tests for gloofsdp.logging covering ASCIIVisualizer layout rendering and RankLogger output."""
+"""
+Unit tests for gloofsdp.logging covering ASCIIVisualizer layout rendering and RankLogger
+output.
+"""
 
 import os
 import tempfile
@@ -36,7 +39,10 @@ class TestASCIIVisualizer:
         assert gathered_bar == "[██████████]"
 
     def test_render_transition_bars(self) -> None:
-        """Verifies correct transition bar mapping for expand and shrink shape transformations."""
+        """
+        Verifies correct transition bar mapping for expand
+        and shrink shape transformations.
+        """
         visualizer = ASCIIVisualizer(bar_width=10, rank=0, world_size=2)
         shape_sharded = torch.Size([5, 16])
         shape_gathered = torch.Size([10, 16])
@@ -80,7 +86,10 @@ class TestRankLoggerUnit:
     def test_log_transition_executes_without_exception(
         self, world_size: int, rank: int
     ) -> None:
-        """Verifies log_transition runs successfully across multiple rank settings without raising errors."""
+        """
+        Verifies log_transition runs successfully across multiple rank settings without
+        raising errors.
+        """
         with patch.dict(os.environ, {"RANK": str(rank), "WORLD_SIZE": str(world_size)}):
             rank_logger = RankLogger()
             rank_logger.log_hooks = True
@@ -99,7 +108,10 @@ class TestRankLoggerDistributed(DistributedTestBase):
     """Test suite for distributed logging functions requiring active process groups."""
 
     def test_log_rank0_only_prints_on_rank_zero(self) -> None:
-        """Verifies log_rank0 prints on rank 0 and triggers barrier on other ranks without printing."""
+        """
+        Verifies log_rank0 prints on rank 0 and triggers barrier on other ranks without
+        printing.
+        """
         test_logger = RankLogger()
 
         with patch("builtins.print") as mock_print:
@@ -114,7 +126,10 @@ class TestRankLoggerDistributed(DistributedTestBase):
                 mock_print.assert_not_called()
 
     def test_log_ordered_sequential_output(self) -> None:
-        """Verifies log_ordered prints strictly in rank order (Rank 0 then Rank 1) into a shared file."""
+        """
+        Verifies log_ordered prints strictly in rank order (Rank 0 then Rank 1) into a
+        shared file.
+        """
 
         test_logger = RankLogger()
 

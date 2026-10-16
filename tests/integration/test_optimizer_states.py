@@ -1,6 +1,7 @@
-"""Integration tests verifying that optimizer states are lazily created as sharded tensors,
-confirming that states applied to already sharded FSDP parameters naturally inherit local sharded
-shapes without requiring manual reallocation or re-sharding.
+"""
+Integration tests verifying that optimizer states are lazily created as sharded tensors,
+confirming that states applied to already sharded FSDP parameters naturally inherit local
+sharded shapes without requiring manual reallocation or re-sharding.
 """
 
 import copy
@@ -14,10 +15,16 @@ from tests.base.test_class import DistributedTestBase
 
 @pytest.mark.multi_rank(world_size=2)
 class TestOptimizerStates(DistributedTestBase):
-    """Test suite covering optimizer state initialization, lazy population, and sharded shape consistency."""
+    """
+    Test suite covering optimizer state initialization, lazy population, and sharded shape
+    consistency.
+    """
 
     def test_optimizer_state_empty_before_step(self) -> None:
-        """Verifies that optimizer states remain uninitialized across init, forward, and backward passes."""
+        """
+        Verifies that optimizer states remain uninitialized across init, forward, and
+        backward passes.
+        """
         model = copy.deepcopy(self.base_model)
         wrapped_model = FSDP(model, device_mesh=self.device_mesh)
         optimizer = torch.optim.Adam(wrapped_model.parameters(), lr=0.001)
@@ -42,7 +49,10 @@ class TestOptimizerStates(DistributedTestBase):
         )
 
     def test_optimizer_state_populated_post_step(self) -> None:
-        """Verifies Adam optimizer state lazy creation, state keys, and local sharded shapes after step()."""
+        """
+        Verifies Adam optimizer state lazy creation, state keys, and local sharded shapes
+        after step().
+        """
         model = copy.deepcopy(self.base_model)
         wrapped_model = FSDP(model, device_mesh=self.device_mesh)
         optimizer = torch.optim.Adam(wrapped_model.parameters(), lr=0.001)
@@ -68,7 +78,8 @@ class TestOptimizerStates(DistributedTestBase):
             # Verify Adam state keys exist and match expected local sharded shapes
             for state_key in ("exp_avg", "exp_avg_sq"):
                 assert state_key in state, (
-                    f"Rank {self.rank}: Key '{state_key}' missing from optimizer state for {parameter_name}"
+                    f"Rank {self.rank}: Key '{state_key}' missing from optimizer state "
+                    f"for {parameter_name}"
                 )
 
                 tensor_val = (
@@ -83,7 +94,10 @@ class TestOptimizerStates(DistributedTestBase):
                 )
 
     def test_sgd_momentum_optimizer_state_populated_post_step(self) -> None:
-        """Verifies non-Adam optimizer (SGD with momentum) state lazy creation and local sharded shapes after step()."""
+        """
+        Verifies non-Adam optimizer (SGD with momentum) state lazy creation and local
+        sharded shapes after step().
+        """
         model = copy.deepcopy(self.base_model)
         wrapped_model = FSDP(model, device_mesh=self.device_mesh)
         optimizer = torch.optim.SGD(wrapped_model.parameters(), lr=0.01, momentum=0.9)
@@ -108,7 +122,8 @@ class TestOptimizerStates(DistributedTestBase):
 
             # Verify SGD momentum buffer key exists and matches expected local sharded shape
             assert "momentum_buffer" in state, (
-                f"Rank {self.rank}: Key 'momentum_buffer' missing from SGD optimizer state for {parameter_name}"
+                f"Rank {self.rank}: Key 'momentum_buffer' missing from SGD optimizer state "
+                f"for {parameter_name}"
             )
 
             tensor_val = (

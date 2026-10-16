@@ -168,7 +168,8 @@ def check_sd_loading(fsdp_model: FSDP, device_mesh: DeviceMesh) -> None:
         fresh_fsdp_model = FSDP(MLP(), device_mesh=device_mesh)
         fresh_fsdp_model.load_state_dict(sd, state_dict_type=sd_type)
         logger.log_ordered(
-            f"✓ Successfully loaded {sd_type.name.capitalize()} State Dict into fresh model instance"
+            f"✓ Successfully loaded {sd_type.name.capitalize()} State Dict "
+            "into fresh model instance"
         )
         logger.log_rank0("\n")
 

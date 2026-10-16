@@ -1,4 +1,7 @@
-"""Unit tests for gloofsdp.hooks covering autograd all-gather/reduce-scatter and execution hooks."""
+"""
+Unit tests for gloofsdp.hooks covering autograd all-gather/reduce-scatter
+and execution hooks.
+"""
 
 import pytest
 import torch
@@ -48,11 +51,15 @@ class TestHooks(DistributedTestBase):
         assert local_parameter.grad is not None
         assert local_parameter.grad.shape == local_shape
 
-        # Verify mean reduction across world_size (sum of ones across 2 ranks is 2; divided by world_size=2 gives 1.0)
+        # Verify mean reduction across world_size
+        # (sum of ones across 2 ranks is 2; divided by # world_size=2 gives 1.0)
         torch.testing.assert_close(local_parameter.grad, torch.ones_like(local_parameter))
 
     def test_forward_pre_hook_and_forward_post_hook_lifecycle(self) -> None:
-        """Verifies parameter gathering before forward execution and freeing immediately after."""
+        """
+        Verifies parameter gathering before forward execution
+        and freeing immediately after.
+        """
         layer = self.base_model.fc1
         fqn = "fc1.weight"
         global_shape, local_shape = self.expected_shapes[fqn]

@@ -11,9 +11,13 @@ from gloofsdp.model import MLP
 
 @pytest.mark.multi_rank(world_size=2)
 class TestMLP:
-    """Test suite verifying dynamic dimensions, weights, and forward/backward execution of MLP."""
+    """
+    Test suite verifying dynamic dimensions, weights,
+    and forward/backward execution of MLP.
+    """
 
     def setup_method(self, method: Any) -> None:
+        """Setup test class args for later use."""
         if dist.is_initialized():
             self.world_size = dist.get_world_size()
 
@@ -54,7 +58,10 @@ class TestMLP:
         assert torch.all(hidden_after_relu >= 0.0)
 
     def test_mlp_backward_pass_gradient_generation(self) -> None:
-        """Verifies gradient computation across all trainable parameters during backward pass."""
+        """
+        Verifies gradient computation across all trainable parameters during
+        backward pass.
+        """
         model = MLP()
         batch_size = 4
 

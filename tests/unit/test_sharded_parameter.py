@@ -1,4 +1,7 @@
-"""Unit tests for gloofsdp.sharded_parameter covering DTensor sharding and state transitions."""
+"""
+Unit tests for gloofsdp.sharded_parameter covering
+DTensor sharding and state transitions.
+"""
 
 import pytest
 import torch
@@ -12,7 +15,10 @@ from tests.base.test_class import DistributedTestBase
 
 @pytest.mark.multi_rank(world_size=2)
 class TestShardedParameter(DistributedTestBase):
-    """Test suite verifying ShardedParameter lifecycle, tensor attributes, and state transitions."""
+    """
+    Test suite verifying ShardedParameter lifecycle, tensor attributes,
+    and state transitions.
+    """
 
     def test_sharded_parameter_initialization(self) -> None:
         """Verifies initial DTensor conversion, local shard shapes, and module assignment."""
@@ -42,7 +48,10 @@ class TestShardedParameter(DistributedTestBase):
         assert sharded_parameter.shape == expected_local_shape
 
     def test_set_unsharded_and_set_sharded_lifecycle(self) -> None:
-        """Verifies symmetric transition between sharded DTensor and full unsharded tensor state."""
+        """
+        Verifies symmetric transition between sharded DTensor
+        and full unsharded tensor state.
+        """
         layer = self.base_model.fc1
         fqn = "fc1.weight"
         global_shape, local_shape = self.expected_shapes[fqn]
@@ -81,7 +90,10 @@ class TestShardedParameter(DistributedTestBase):
         assert isinstance(layer.weight.data, DTensor)
 
     def test_local_shard_tensor_values_match_global_chunk(self) -> None:
-        """Verifies that local DTensor shard data matches the expected slice of the original weight."""
+        """
+        Verifies that local DTensor shard data matches
+        the expected slice of the original weight.
+        """
         layer = self.base_model.fc1
         fqn = "fc1.weight"
         original_data = layer.weight.data.clone()

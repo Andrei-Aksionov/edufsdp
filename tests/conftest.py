@@ -1,4 +1,5 @@
-"""Pytest setup and multi-process test runner configuration for gloofsdp.
+"""
+Pytest setup and multi-process test runner configuration for gloofsdp.
 
 Provides custom test markers and Pytest execution hooks to run distributed
 unit tests across multiple CPU processes using `torch.multiprocessing.spawn`.
@@ -30,7 +31,8 @@ def _spawn_worker(
     test_instance: Any,
     kwargs: dict[str, Any],
 ) -> None:
-    """Target function executed inside each spawned worker process.
+    """
+    Target function executed inside each spawned worker process.
 
     Populates standard PyTorch distributed environment variables, sets up loopback
     network interfaces for Gloo, and executes the target test function or method.
@@ -68,7 +70,8 @@ def _spawn_worker(
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> bool | None:
-    """Intercepts marked test calls to execute them across spawned worker processes.
+    """
+    Intercepts marked test calls to execute them across spawned worker processes.
 
     If a test item or its parent class is marked with `@pytest.mark.multi_rank`,
     this hook intercepts standard single-process execution and instead spawns `world_size`

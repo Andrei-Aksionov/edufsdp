@@ -10,14 +10,18 @@ from torch.distributed.device_mesh import init_device_mesh
 
 
 class SimpleMLP(nn.Module):
-    """Simple multi-layer perceptron module for testing sharding and hooks.
+    """
+    Simple multi-layer perceptron module for testing sharding and hooks.
 
     Attributes:
         fc1: First linear projection without bias (in_features=16, out_features=4).
         fc2: Second linear projection without bias (in_features=4, out_features=8).
+
     """
 
     def __init__(self) -> None:
+        """Initializes linear layers with dimensions for the world size of 2."""
+        assert dist.get_world_size() == 2, "Supports only tests for world size of 2"
         super().__init__()
 
         self.input_dim = 16
@@ -30,13 +34,15 @@ class SimpleMLP(nn.Module):
         self.fc2 = nn.Linear(self.hidden_dim, self.output_dim, bias=False)
 
     def forward(self, x: Tensor) -> Tensor:
-        """Executes forward pass through linear layers.
+        """
+        Executes forward pass through linear layers.
 
         Args:
             x: Input tensor of shape (batch_size, 16).
 
         Returns:
             Output tensor of shape (batch_size, 8).
+
         """
         return self.fc2(self.fc1(x))
 

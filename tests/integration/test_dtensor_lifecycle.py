@@ -1,4 +1,7 @@
-"""Integration tests verifying parameter DTensor types, placements, sharded shapes, and lifecycle transitions."""
+"""
+Integration tests verifying parameter DTensor types, placements,
+sharded shapes, and lifecycle transitions.
+"""
 
 import copy
 
@@ -12,10 +15,16 @@ from tests.base.test_class import DistributedTestBase
 
 @pytest.mark.multi_rank(world_size=2)
 class TestCustomDTensorLifecycle(DistributedTestBase):
-    """Test suite covering static sharding, runtime weight DTensor placements, and lifecycle invariants."""
+    """
+    Test suite covering static sharding, runtime weight DTensor placements,
+    and lifecycle invariants.
+    """
 
     def test_dtensor_resting_and_forward_lifecycle(self) -> None:
-        """Verifies DTensor types, placements, and local shard shapes at rest and post-forward."""
+        """
+        Verifies DTensor types, placements, and local shard shapes
+        at rest and post-forward.
+        """
         model = copy.deepcopy(self.base_model)
         wrapped_model = FSDP(model, device_mesh=self.device_mesh)
 
@@ -46,7 +55,10 @@ class TestCustomDTensorLifecycle(DistributedTestBase):
             assert module_parameter.to_local().shape == expected_local_shape
 
     def test_dtensor_backward_lifecycle_and_gradients(self) -> None:
-        """Verifies weight DTensors and gradient DTensor placements, shapes, and types post-backward."""
+        """
+        Verifies weight DTensors and gradient DTensor placements, shapes,
+        and types post-backward.
+        """
         model = copy.deepcopy(self.base_model)
         wrapped_model = FSDP(model, device_mesh=self.device_mesh)
 

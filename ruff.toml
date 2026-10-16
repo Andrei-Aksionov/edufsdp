@@ -34,7 +34,6 @@ lint.ignore = [
   "D212", # multi-line-summary-first-line (conflicts with D213)
   "D401", # First line of docstring should be in imperative mood
   "E402", # Module level import not at top of file
-  "E501", # Line too long ({width} > {limit} characters)
   "E731", # Do not assign a lambda expression, use a def
   "PT007", # Wrong values type in @pytest.mark.parametrize expected {values} of {row}
   "S101", # assert detected
@@ -60,7 +59,8 @@ line-length = 95
 "tests/**" = [
   "ANN", # Type annotations
   "ARG001", # Unused function argument
-  "D", # Disable all docstring rules for tests
+  # "D", # Disable all docstring rules for tests
+  "D205", # 1 blank line required between summary line and description
   "DOC", # Disable all docstring rules for tests
   "T201", # `print` found
 ]

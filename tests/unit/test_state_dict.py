@@ -1,4 +1,7 @@
-"""Unit tests for gloofsdp.state_dict covering LOCAL and FULL state dict extraction, loading, and parameter state preservation."""
+"""
+Unit tests for gloofsdp.state_dict covering LOCAL and FULL state dict extraction,
+loading, and parameter state preservation.
+"""
 
 import copy
 
@@ -12,10 +15,16 @@ from tests.base.test_class import DistributedTestBase
 
 @pytest.mark.multi_rank(world_size=2)
 class TestStateDictManager(DistributedTestBase):
-    """Test suite for StateDictManager handling local shards, full checkpoints, and parameter isolation."""
+    """
+    Test suite for StateDictManager handling local shards, full checkpoints,
+    and parameter isolation.
+    """
 
     def test_get_state_dict_local_format(self) -> None:
-        """Verifies extraction of LOCAL state dict returns rank-local shard shapes and values."""
+        """
+        Verifies extraction of LOCAL state dict returns rank-local shard shapes
+        and values.
+        """
         fsdp_model = FSDP(self.base_model, self.device_mesh)
         state_dict = StateDictManager.get_state_dict(
             fsdp_model.inner_module,
@@ -34,7 +43,10 @@ class TestStateDictManager(DistributedTestBase):
             torch.testing.assert_close(tensor, expected_local_shard)
 
     def test_get_state_dict_full_format_matches_baseline(self) -> None:
-        """Verifies extraction of FULL state dict consolidates global tensors matching the unsharded baseline."""
+        """
+        Verifies extraction of FULL state dict consolidates global tensors
+        matching the unsharded baseline.
+        """
         fsdp_model = FSDP(copy.deepcopy(self.base_model), self.device_mesh)
         full_state_dict = StateDictManager.get_state_dict(
             fsdp_model.inner_module,
@@ -53,7 +65,10 @@ class TestStateDictManager(DistributedTestBase):
             torch.testing.assert_close(tensor, baseline_parameter)
 
     def test_get_state_dict_full_preserves_sharded_parameter_state(self) -> None:
-        """Verifies that extracting a FULL state dict gathers tensors during extraction but leaves parameters sharded."""
+        """
+        Verifies that extracting a FULL state dict gathers tensors during extraction
+        but leaves parameters sharded.
+        """
         fsdp_model = FSDP(self.base_model, self.device_mesh)
 
         # Confirm all parameters start sharded
@@ -72,7 +87,8 @@ class TestStateDictManager(DistributedTestBase):
             global_shape, _ = self.expected_shapes[fqn]
             assert tensor.shape == global_shape
 
-        # Verify that underlying ShardedParameter instances remain in sharded state (is_gathered=False)
+        # Verify that underlying ShardedParameter instances remain
+        # in sharded state (is_gathered=False)
         for sharded_parameter in fsdp_model.sharded_parameters.values():
             assert not sharded_parameter.is_gathered
             _, expected_local_shape = self.expected_shapes[sharded_parameter.fqn]
@@ -110,7 +126,10 @@ class TestStateDictManager(DistributedTestBase):
             torch.testing.assert_close(target_local_state_dict[fqn], local_state_dict[fqn])
 
     def test_load_state_dict_full_format(self) -> None:
-        """Verifies reloading FULL format state dict correctly redistributes global tensors across ranks."""
+        """
+        Verifies reloading FULL format state dict
+        correctly redistributes global tensors across ranks.
+        """
         fsdp_model_src = FSDP(copy.deepcopy(self.base_model), self.device_mesh)
         full_state_dict = StateDictManager.get_state_dict(
             fsdp_model_src.inner_module,
@@ -136,7 +155,10 @@ class TestStateDictManager(DistributedTestBase):
             torch.testing.assert_close(target_full_state_dict[fqn], full_state_dict[fqn])
 
     def test_load_state_dict_raises_key_error_on_unknown_parameter(self) -> None:
-        """Verifies KeyError is raised when incoming state dict contains a parameter not present in module."""
+        """
+        Verifies KeyError is raised when incoming state dict
+        contains a parameter not present in module.
+        """
         fsdp_model = FSDP(self.base_model, self.device_mesh)
         invalid_state_dict = {"nonexistent.weight": torch.zeros(2, 2)}
 

@@ -1,4 +1,7 @@
-"""Integration tests verifying model training convergence, numerical stability, and parameter updates."""
+"""
+Integration tests verifying model training convergence,
+numerical stability, and parameter updates.
+"""
 
 import copy
 from typing import Any
@@ -15,7 +18,10 @@ from tests.base.test_class import DistributedTestBase
 
 @pytest.mark.multi_rank(world_size=2)
 class TestCustomTrainingConvergence(DistributedTestBase):
-    """Test suite covering end-to-end training execution, loss reduction, and weight updates with custom FSDP."""
+    """
+    Test suite covering end-to-end training execution, loss reduction,
+    and weight updates with custom FSDP.
+    """
 
     def setup_method(self, method: Any) -> None:
         """Initializes distributed base environment and sets up training components."""
@@ -34,7 +40,10 @@ class TestCustomTrainingConvergence(DistributedTestBase):
         self.target = torch.randn(2, self.base_model.output_dim, device=self.device)
 
     def test_loss_decreases_across_steps(self) -> None:
-        """Verifies that training loss successfully decreases over a multi-step optimization loop."""
+        """
+        Verifies that training loss successfully decreases over
+        a multi-step optimization loop.
+        """
         losses = []
 
         for _ in range(5):
@@ -49,7 +58,8 @@ class TestCustomTrainingConvergence(DistributedTestBase):
         start_loss, end_loss = losses[0], losses[-1]
 
         assert end_loss < start_loss, (
-            f"[Rank {self.rank}] Loss failed to decrease: initial={start_loss:.6f}, final={end_loss:.6f}"
+            f"[Rank {self.rank}] Loss failed to decrease: "
+            f"initial={start_loss:.6f}, final={end_loss:.6f}"
         )
 
     def test_loss_numerical_stability(self) -> None:
@@ -99,7 +109,10 @@ class TestCustomTrainingConvergence(DistributedTestBase):
             )
 
     def test_gradient_accumulation(self) -> None:
-        """Verifies that gradients accumulate correctly across multiple backward passes without resetting."""
+        """
+        Verifies that gradients accumulate correctly across
+        multiple backward passes without resetting.
+        """
         # 1. Run first backward pass and capture baseline gradients
         self.optimizer.zero_grad()
         output1 = self.wrapped_model(self.x)
@@ -130,7 +143,8 @@ class TestCustomTrainingConvergence(DistributedTestBase):
 
             # Verify shape invariance
             assert local_grad.shape == expected_local_shape, (
-                f"Rank {self.rank}: Accumulated gradient shape mismatch - Got {local_grad.shape}, Expected {expected_local_shape}"
+                f"Rank {self.rank}: Accumulated gradient shape mismatch "
+                f"- Got {local_grad.shape}, Expected {expected_local_shape}"
             )
 
             # Verify value accumulation (doubled since inputs/targets are identical)
@@ -138,7 +152,10 @@ class TestCustomTrainingConvergence(DistributedTestBase):
             torch.testing.assert_close(
                 local_grad,
                 expected_accumulated,
-                msg=f"Rank {self.rank}: Gradient accumulation values diverged for {parameter_name}",
+                msg=(
+                    f"Rank {self.rank}: Gradient accumulation values diverged "
+                    f"for {parameter_name}"
+                ),
             )
 
         # 4. Verify zero_grad clears or resets gradients successfully
@@ -148,5 +165,6 @@ class TestCustomTrainingConvergence(DistributedTestBase):
             parameter = getattr(getattr(self.wrapped_model.inner_module, layer_name), attr)
 
             assert parameter.grad is None or torch.all(parameter.grad == 0), (
-                f"Rank {self.rank}: Gradients were not cleared after zero_grad() for {parameter_name}"
+                f"Rank {self.rank}: Gradients were not cleared after zero_grad() "
+                f"for {parameter_name}"
             )

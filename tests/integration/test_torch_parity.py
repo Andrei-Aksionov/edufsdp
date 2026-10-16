@@ -27,7 +27,10 @@ def _reference_fully_shard_model(model: nn.Module, device_mesh) -> nn.Module:
 
 @pytest.mark.multi_rank(world_size=2)
 class TestStateDictParity(DistributedTestBase):
-    """Verifies state dictionary extraction parity (LOCAL and FULL) between EducationalFSDP and Native FSDP2."""
+    """
+    Verifies state dictionary extraction parity (LOCAL and FULL) between EducationalFSDP and
+    Native FSDP2.
+    """
 
     def test_full_state_dict_parity(self) -> None:
         """Verifies full (unsharded) state dict parity matches PyTorch native FSDP2."""
@@ -75,10 +78,16 @@ class TestStateDictParity(DistributedTestBase):
 
 @pytest.mark.multi_rank(world_size=2)
 class TestDTensorStructureParity(DistributedTestBase):
-    """Verifies DTensor property, placement, mesh, and gradient structure parity against FSDP2."""
+    """
+    Verifies DTensor property, placement, mesh, and gradient structure parity against
+    FSDP2.
+    """
 
     def test_dtensor_properties_and_gradients_parity(self) -> None:
-        """Verifies parameter types, placements, device mesh, local shapes, and gradient DTensor types."""
+        """
+        Verifies parameter types, placements, device mesh, local shapes, and gradient
+        DTensor types.
+        """
         wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
         wrapped_reference = _reference_fully_shard_model(
             copy.deepcopy(self.base_model), self.device_mesh
@@ -124,7 +133,10 @@ class TestOptimizerStateParity(DistributedTestBase):
     """Verifies optimizer state sharding and structure parity against FSDP2."""
 
     def test_optimizer_state_sharding_parity(self) -> None:
-        """Verifies optimizer state buffer names, sharding shapes, and parity post optimizer step()."""
+        """
+        Verifies optimizer state buffer names, sharding shapes, and parity post optimizer
+        step().
+        """
         wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
         optimizer_custom = torch.optim.Adam(wrapped_custom.parameters(), lr=0.001)
 
@@ -175,10 +187,16 @@ class TestOptimizerStateParity(DistributedTestBase):
 
 @pytest.mark.multi_rank(world_size=2)
 class TestExecutionLifecycleParity(DistributedTestBase):
-    """Verifies strict parity of execution lifecycle state transitions between EducationalFSDP and Native FSDP2."""
+    """
+    Verifies strict parity of execution lifecycle state transitions between EducationalFSDP
+    and Native FSDP2.
+    """
 
     def test_sharding_after_wrapping_parity(self) -> None:
-        """1. Verifies that parameters are correctly sharded immediately upon wrapping for both models."""
+        """
+        1. Verifies that parameters are correctly sharded immediately upon wrapping for both
+        models.
+        """
         wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
         wrapped_reference = _reference_fully_shard_model(
             copy.deepcopy(self.base_model), self.device_mesh
@@ -198,7 +216,10 @@ class TestExecutionLifecycleParity(DistributedTestBase):
             assert not wrapped_custom.sharded_parameters[parameter_name].is_gathered
 
     def test_forward_parameters_are_gathered_parity(self) -> None:
-        """2. Verifies that parameters are all-gathered during the forward pass in both models."""
+        """
+        2. Verifies that parameters are all-gathered during the forward pass in both
+        models.
+        """
         wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
         wrapped_reference = _reference_fully_shard_model(
             copy.deepcopy(self.base_model), self.device_mesh
@@ -249,7 +270,10 @@ class TestExecutionLifecycleParity(DistributedTestBase):
             assert reference_shapes_during_forward.get(parameter_name) == global_shape
 
     def test_forward_parameters_resharded_after_forward_parity(self) -> None:
-        """3. Verifies that parameters are resharded back to local shapes after forward in both models."""
+        """
+        3. Verifies that parameters are resharded back to local shapes after forward in both
+        models.
+        """
         wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
         wrapped_reference = _reference_fully_shard_model(
             copy.deepcopy(self.base_model), self.device_mesh
@@ -269,7 +293,10 @@ class TestExecutionLifecycleParity(DistributedTestBase):
             assert not wrapped_custom.sharded_parameters[parameter_name].is_gathered
 
     def test_backward_parameters_are_gathered_parity(self) -> None:
-        """4. Verifies that parameters are all-gathered during the backward pass in both models."""
+        """
+        4. Verifies that parameters are all-gathered during the backward pass in both
+        models.
+        """
         wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
         wrapped_reference = _reference_fully_shard_model(
             copy.deepcopy(self.base_model), self.device_mesh
@@ -325,7 +352,10 @@ class TestExecutionLifecycleParity(DistributedTestBase):
             assert reference_shapes_during_backward.get(parameter_name) == global_shape
 
     def test_backward_gradients_are_reduce_scattered_parity(self) -> None:
-        """5. Verifies that gradients are reduce-scattered to local sharded shapes matching Native FSDP2."""
+        """
+        5. Verifies that gradients are reduce-scattered to local sharded shapes matching
+        Native FSDP2.
+        """
         wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
         wrapped_reference = _reference_fully_shard_model(
             copy.deepcopy(self.base_model), self.device_mesh
@@ -358,7 +388,10 @@ class TestExecutionLifecycleParity(DistributedTestBase):
             )
 
     def test_parameters_resharded_after_backward_parity(self) -> None:
-        """6. Verifies that parameters are resharded back to local shapes after backward in both models."""
+        """
+        6. Verifies that parameters are resharded back to local shapes after backward in
+        both models.
+        """
         wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
         wrapped_reference = _reference_fully_shard_model(
             copy.deepcopy(self.base_model), self.device_mesh
@@ -387,7 +420,10 @@ class TestConvergenceParity(DistributedTestBase):
     """Verifies end-to-end training loop convergence parity against FSDP2."""
 
     def test_multi_step_training_convergence_parity(self) -> None:
-        """Verifies forward outputs and loss values match Native FSDP2 over a 5-step SGD training loop."""
+        """
+        Verifies forward outputs and loss values match Native FSDP2 over a 5-step SGD
+        training loop.
+        """
         wrapped_custom = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
         custom_optimizer = torch.optim.SGD(wrapped_custom.parameters(), lr=0.01)
 
