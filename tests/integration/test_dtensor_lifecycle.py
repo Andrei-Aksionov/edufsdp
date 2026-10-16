@@ -30,7 +30,9 @@ class TestCustomDTensorLifecycle(DistributedTestBase):
             assert module_parameter.to_local().shape == expected_local_shape
 
         # 2. Run Forward Pass
-        dummy_input = torch.randn(2, self.base_model.input_dim, device=self.device, requires_grad=True)
+        dummy_input = torch.randn(
+            2, self.base_model.input_dim, device=self.device, requires_grad=True
+        )
         _ = wrapped_model(dummy_input)
 
         # 3. Check resting state post-forward (should be resharded back to resting DTensor)
@@ -48,7 +50,9 @@ class TestCustomDTensorLifecycle(DistributedTestBase):
         model = copy.deepcopy(self.base_model)
         wrapped_model = FSDP(model, device_mesh=self.device_mesh)
 
-        dummy_input = torch.randn(2, self.base_model.input_dim, device=self.device, requires_grad=True)
+        dummy_input = torch.randn(
+            2, self.base_model.input_dim, device=self.device, requires_grad=True
+        )
         output = wrapped_model(dummy_input)
         loss = output.sum()
         loss.backward()
@@ -64,7 +68,9 @@ class TestCustomDTensorLifecycle(DistributedTestBase):
             assert module_parameter.to_local().shape == expected_local_shape
 
             # 2. Gradient parameter checks (Type, Mesh, Placement, Local Shard Shape)
-            assert module_parameter.grad is not None, f"Rank {self.rank}: {parameter_name}.grad is None"
+            assert module_parameter.grad is not None, (
+                f"Rank {self.rank}: {parameter_name}.grad is None"
+            )
             assert isinstance(module_parameter.grad, DTensor)
             assert module_parameter.grad.device_mesh == self.device_mesh
             assert module_parameter.grad.placements == (Shard(0),)

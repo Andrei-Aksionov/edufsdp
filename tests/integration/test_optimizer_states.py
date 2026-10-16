@@ -23,17 +23,23 @@ class TestOptimizerStates(DistributedTestBase):
         optimizer = torch.optim.Adam(wrapped_model.parameters(), lr=0.001)
 
         # 1. State should be empty right after instantiation
-        assert len(optimizer.state) == 0, "Optimizer state should be empty after initialization"
+        assert len(optimizer.state) == 0, (
+            "Optimizer state should be empty after initialization"
+        )
 
         # 2. State should remain empty post-forward
-        dummy_input = torch.randn(2, self.base_model.input_dim, device=self.device, requires_grad=True)
+        dummy_input = torch.randn(
+            2, self.base_model.input_dim, device=self.device, requires_grad=True
+        )
         output = wrapped_model(dummy_input)
         assert len(optimizer.state) == 0, "Optimizer state should be empty post-forward"
 
         # 3. State should remain empty post-backward (before step)
         loss = output.sum()
         loss.backward()
-        assert len(optimizer.state) == 0, "Optimizer state should be empty post-backward (before step)"
+        assert len(optimizer.state) == 0, (
+            "Optimizer state should be empty post-backward (before step)"
+        )
 
     def test_optimizer_state_populated_post_step(self) -> None:
         """Verifies Adam optimizer state lazy creation, state keys, and local sharded shapes after step()."""
@@ -41,7 +47,9 @@ class TestOptimizerStates(DistributedTestBase):
         wrapped_model = FSDP(model, device_mesh=self.device_mesh)
         optimizer = torch.optim.Adam(wrapped_model.parameters(), lr=0.001)
 
-        dummy_input = torch.randn(2, self.base_model.input_dim, device=self.device, requires_grad=True)
+        dummy_input = torch.randn(
+            2, self.base_model.input_dim, device=self.device, requires_grad=True
+        )
         output = wrapped_model(dummy_input)
         output.sum().backward()
         optimizer.step()
@@ -63,7 +71,11 @@ class TestOptimizerStates(DistributedTestBase):
                     f"Rank {self.rank}: Key '{state_key}' missing from optimizer state for {parameter_name}"
                 )
 
-                tensor_val = state[state_key].to_local() if hasattr(state[state_key], "to_local") else state[state_key]
+                tensor_val = (
+                    state[state_key].to_local()
+                    if hasattr(state[state_key], "to_local")
+                    else state[state_key]
+                )
 
                 assert tensor_val.shape == expected_local_shape, (
                     f"Rank {self.rank}: {parameter_name} state '{state_key}' shape mismatch - "
@@ -76,7 +88,9 @@ class TestOptimizerStates(DistributedTestBase):
         wrapped_model = FSDP(model, device_mesh=self.device_mesh)
         optimizer = torch.optim.SGD(wrapped_model.parameters(), lr=0.01, momentum=0.9)
 
-        dummy_input = torch.randn(2, self.base_model.input_dim, device=self.device, requires_grad=True)
+        dummy_input = torch.randn(
+            2, self.base_model.input_dim, device=self.device, requires_grad=True
+        )
         output = wrapped_model(dummy_input)
         output.sum().backward()
         optimizer.step()

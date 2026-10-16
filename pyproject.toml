@@ -24,3 +24,8 @@ markers = [
     "multi_rank(world_size=2): run test across multiple CPU processes via torch.multiprocessing.spawn",
 ]
 filterwarnings = ["ignore::FutureWarning"]
+
+[tool.ty]
+# Silences type errors when overriding base class mutable Callable attributes
+# (e.g., PyTorch `nn.Module.forward`).
+rules.invalid-mutable-override = "ignore"

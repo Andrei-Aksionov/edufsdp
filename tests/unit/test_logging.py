@@ -67,7 +67,9 @@ class TestRankLoggerUnit:
             (1, 4, "hello world", "[Rank 1/4] hello world"),
         ],
     )
-    def test_add_prefix_rank(self, rank: int, world_size: int, provided: str, expected: str) -> None:
+    def test_add_prefix_rank(
+        self, rank: int, world_size: int, provided: str, expected: str
+    ) -> None:
         """Verifies rank prefix formatting matches expectations."""
         with patch.dict(os.environ, {"RANK": str(rank), "WORLD_SIZE": str(world_size)}):
             rank_logger = RankLogger()
@@ -75,7 +77,9 @@ class TestRankLoggerUnit:
 
     @pytest.mark.parametrize("rank", (0, 1))
     @pytest.mark.parametrize("world_size", (2, 3, 4))
-    def test_log_transition_executes_without_exception(self, world_size: int, rank: int) -> None:
+    def test_log_transition_executes_without_exception(
+        self, world_size: int, rank: int
+    ) -> None:
         """Verifies log_transition runs successfully across multiple rank settings without raising errors."""
         with patch.dict(os.environ, {"RANK": str(rank), "WORLD_SIZE": str(world_size)}):
             rank_logger = RankLogger()
@@ -134,7 +138,9 @@ class TestRankLoggerDistributed(DistributedTestBase):
             with open(log_file_path, "r") as shared_file:
                 lines = shared_file.readlines()
 
-            msg_lines = [line.strip() for line in lines if "Ordered synchronization check" in line]
+            msg_lines = [
+                line.strip() for line in lines if "Ordered synchronization check" in line
+            ]
 
             assert len(msg_lines) == 2
             assert "Rank 0/2" in msg_lines[0]

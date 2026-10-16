@@ -66,5 +66,9 @@ class TestMLP:
         # Check gradients exist and are non-zero for all parameters
         for name, parameter in model.named_parameters():
             assert parameter.grad is not None, f"Gradient missing for parameter {name}"
-            assert parameter.grad.shape == parameter.shape, f"Gradient shape mismatch for parameter {name}"
-            assert not torch.all(parameter.grad == 0.0), f"Gradient is all zeros for parameter {name}"
+            assert parameter.grad.shape == parameter.shape, (
+                f"Gradient shape mismatch for parameter {name}"
+            )
+            assert not torch.all(parameter.grad == 0.0), (
+                f"Gradient is all zeros for parameter {name}"
+            )

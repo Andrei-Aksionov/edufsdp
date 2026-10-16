@@ -22,7 +22,9 @@ class TestShardingPlacement(DistributedTestBase):
 
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
-            module_parameter = getattr(getattr(wrapped_model.inner_module, layer_name), attr).to_local()
+            module_parameter = getattr(
+                getattr(wrapped_model.inner_module, layer_name), attr
+            ).to_local()
             assert module_parameter.shape == expected_local_shape, (
                 f"Rank {self.rank}: {parameter_name} module resting shape {module_parameter.shape} != {expected_local_shape}"
             )
@@ -63,7 +65,9 @@ class TestShardingPlacement(DistributedTestBase):
 
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
-            module_parameter = getattr(getattr(wrapped_model.inner_module, layer_name), attr).to_local()
+            module_parameter = getattr(
+                getattr(wrapped_model.inner_module, layer_name), attr
+            ).to_local()
             assert module_parameter.shape == expected_local_shape, (
                 f"Rank {self.rank}: {parameter_name} post-forward shape was not freed "
                 f"back to {expected_local_shape}, got {module_parameter.shape}"
@@ -87,7 +91,9 @@ class TestShardingPlacement(DistributedTestBase):
 
                 return hook
 
-            child_module.register_full_backward_pre_hook(make_hook(parameter_name, child_module, attr))
+            child_module.register_full_backward_pre_hook(
+                make_hook(parameter_name, child_module, attr)
+            )
 
         dummy_input = torch.randn(2, self.base_model.input_dim, device=self.device)
         output = wrapped_model(dummy_input)
@@ -121,7 +127,9 @@ class TestShardingPlacement(DistributedTestBase):
             parameter = getattr(getattr(wrapped_model.inner_module, layer_name), attr)
             local_grad = parameter.grad.to_local()
 
-            assert local_grad is not None, f"Rank {self.rank}: {parameter_name} grad was None after loss.backward()"
+            assert local_grad is not None, (
+                f"Rank {self.rank}: {parameter_name} grad was None after loss.backward()"
+            )
 
             grad_shape = local_grad.shape
             assert grad_shape == expected_local_shape, (
