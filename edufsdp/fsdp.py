@@ -6,36 +6,36 @@ and attaching pre/post execution hooks for automatic parameter gathering and fre
 
 Execution lifecycle for each submodule:
 
-            Forward Pass                                          Backward Pass
- ┌──────────────────────────────────────┐              ┌──────────────────────────────────────┐
- │ ForwardPreHook                       │              │ BackwardPreHook                      │
- │   --> all_gather()                   │              │   --> all_gather()                   │
- │   Gathers weight & bias to full size │              │   Gathers weight & bias to full size │
- │   [Full memory]                      │              │   [Full memory]                      │
- └──────────────────┬───────────────────┘              └──────────────────┬───────────────────┘
-                    │                                                     │
-                    ▼                                                     ▼
- ┌──────────────────────────────────────┐              ┌──────────────────────────────────────┐
- │ Forward Compute                      │              │ Backward Compute                     │
- │   Executes layer ops (e.g. F.linear) │              │   Calculates weight, bias & input    │
- │   using unsharded full parameters    │              │   gradients using full parameters    │
- └──────────────────┬───────────────────┘              └──────────────────┬───────────────────┘
-                    │                                                     │
-                    ▼                                                     ▼
- ┌──────────────────────────────────────┐              ┌──────────────────────────────────────┐
- │ ForwardPostHook                      │              │ reduce_scatter()                     │
- │   --> free()                         │              │   Averages & shards weight & bias    │
- │   Drops full weight & bias tensors,  │              │   gradients across ranks into local  │
- │   restoring DTensors [1/N memory]    │              │   1/N DTensor shard buffers          │
- └──────────────────────────────────────┘              └──────────────────┬───────────────────┘
-                                                                          │
-                                                                          ▼
-                                                       ┌──────────────────────────────────────┐
-                                                       │ BackwardPostHook                     │
-                                                       │   --> free()                         │
-                                                       │   Drops full weight & bias tensors,  │
-                                                       │   restoring DTensors [1/N memory]    │
-                                                       └──────────────────────────────────────┘
+              Forward Pass                                   Backward Pass
+ ┌──────────────────────────────────────┐        ┌──────────────────────────────────────┐
+ │ ForwardPreHook                       │        │ BackwardPreHook                      │
+ │   --> all_gather()                   │        │   --> all_gather()                   │
+ │   Gathers weight & bias to full size │        │   Gathers weight & bias to full size │
+ │   [Full memory]                      │        │   [Full memory]                      │
+ └──────────────────┬───────────────────┘        └──────────────────┬───────────────────┘
+                    │                                               │
+                    ▼                                               ▼
+ ┌──────────────────────────────────────┐        ┌──────────────────────────────────────┐
+ │ Forward Compute                      │        │ Backward Compute                     │
+ │   Executes layer ops (e.g. F.linear) │        │   Calculates weight, bias & input    │
+ │   using unsharded full parameters    │        │   gradients using full parameters    │
+ └──────────────────┬───────────────────┘        └──────────────────┬───────────────────┘
+                    │                                               │
+                    ▼                                               ▼
+ ┌──────────────────────────────────────┐        ┌──────────────────────────────────────┐
+ │ ForwardPostHook                      │        │ reduce_scatter()                     │
+ │   --> free()                         │        │   Averages & shards weight & bias    │
+ │   Drops full weight & bias tensors,  │        │   gradients across ranks into local  │
+ │   restoring DTensors [1/N memory]    │        │   1/N DTensor shard buffers          │
+ └──────────────────────────────────────┘        └──────────────────┬───────────────────┘
+                                                                    │
+                                                                    ▼
+                                                 ┌──────────────────────────────────────┐
+                                                 │ BackwardPostHook                     │
+                                                 │   --> free()                         │
+                                                 │   Drops full weight & bias tensors,  │
+                                                 │   restoring DTensors [1/N memory]    │
+                                                 └──────────────────────────────────────┘
 """
 
 from typing import TYPE_CHECKING, Any

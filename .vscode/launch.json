@@ -1,0 +1,53 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "internalConsole",
+        },
+        {
+            "name": "Debug Current File (torchrun)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "torch.distributed.run",
+            "args": [
+                "--nnodes=1",
+                "--nproc-per-node=2",
+                "--master-addr=127.0.0.1",
+                "--master-port=29500",
+                "${file}"
+            ],
+            "console": "internalConsole",
+            "subProcess": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "GLOO_SOCKET_IFNAME": "lo0"
+            }
+        },
+        {
+            "name": "Debug `inspect_fsdp.py` (torchrun)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "torch.distributed.run",
+            "args": [
+                "--nnodes=1",
+                "--nproc-per-node=2",
+                "--master-addr=127.0.0.1",
+                "--master-port=29500",
+                "inspect_fsdp.py"
+            ],
+            "console": "internalConsole",
+            "subProcess": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "GLOO_SOCKET_IFNAME": "lo0"
+            }
+        },
+    ],
+}
