@@ -1,4 +1,4 @@
-"""Integration parity tests comparing gloofsdp against PyTorch native FSDP v2 (fully_shard)."""
+"""Integration parity tests comparing edufsdp against PyTorch native FSDP v2 (fully_shard)."""
 
 import copy
 from typing import Any, cast
@@ -11,8 +11,8 @@ from torch.distributed.checkpoint.state_dict import StateDictOptions, get_state_
 from torch.distributed.fsdp import fully_shard
 from torch.distributed.tensor import DTensor
 
-from gloofsdp.fsdp import FSDP
-from gloofsdp.state_dict import StateDictType as EDUStateDictType
+from edufsdp.fsdp import FSDP
+from edufsdp.state_dict import StateDictType
 from tests.base.test_class import DistributedTestBase
 
 
@@ -28,7 +28,7 @@ def _reference_fully_shard_model(model: nn.Module, device_mesh) -> nn.Module:
 @pytest.mark.multi_rank
 class TestStateDictParity(DistributedTestBase):
     """
-    Verifies state dictionary extraction parity (LOCAL and FULL) between EducationalFSDP and
+    Verifies state dictionary extraction parity (Local and Full) between EducationalFSDP and
     Native FSDP2.
     """
 
@@ -39,7 +39,7 @@ class TestStateDictParity(DistributedTestBase):
             copy.deepcopy(self.base_model), self.device_mesh
         )
 
-        custom_sd = wrapped_custom.state_dict(state_dict_type=EDUStateDictType.FULL)
+        custom_sd = wrapped_custom.state_dict(state_dict_type=StateDictType.Full)
         reference_sd, _ = get_state_dict(
             wrapped_reference, optimizers=(), options=StateDictOptions(full_state_dict=True)
         )
@@ -60,7 +60,7 @@ class TestStateDictParity(DistributedTestBase):
             copy.deepcopy(self.base_model), self.device_mesh
         )
 
-        custom_sd = wrapped_custom.state_dict(state_dict_type=EDUStateDictType.LOCAL)
+        custom_sd = wrapped_custom.state_dict(state_dict_type=StateDictType.Local)
         reference_sd, _ = get_state_dict(
             wrapped_reference, optimizers=(), options=StateDictOptions(full_state_dict=False)
         )

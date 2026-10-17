@@ -1,4 +1,4 @@
-"""Unit tests for gloofsdp.model containing toy MLP network definitions."""
+"""Unit tests for edufsdp.model containing toy MLP network definitions."""
 
 from typing import Any
 
@@ -6,7 +6,7 @@ import pytest
 import torch
 from torch import distributed as dist
 
-from gloofsdp.model import MLP
+from edufsdp.model import MLP
 
 
 @pytest.mark.multi_rank

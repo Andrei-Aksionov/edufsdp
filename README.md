@@ -1,4 +1,4 @@
-# GlooFSDP (`gloofsdp`)
+# edufsdp (`edufsdp`)
 
 > **A transparent, ground-up implementation of Fully Sharded Data Parallel (FSDP) engineered for educational clarity, low-level inspection, and execution on Apple Silicon / CPU via the Gloo backend.**
 
@@ -8,7 +8,7 @@
 
 While PyTorch's native `FullyShardedDataParallel` (FSDP) is optimized for high-throughput GPU training with complex C++/NCCL pipelines, its internal abstractions can be difficult to inspect and step through.
 
-`gloofsdp` is an educational reference implementation designed to make distributed parameter sharding, autograd hook interception, and collective communications completely explicit and transparent. Built to run natively on CPU and Apple Silicon via PyTorch’s `Gloo` backend, `gloofsdp` mirrors the mathematical lifecycle of production FSDP down to $\le 10^{-5}$ precision.
+`edufsdp` is an educational reference implementation designed to make distributed parameter sharding, autograd hook interception, and collective communications completely explicit and transparent. Built to run natively on CPU and Apple Silicon via PyTorch’s `Gloo` backend, `edufsdp` mirrors the mathematical lifecycle of production FSDP down to $\le 10^{-5}$ precision.
 
 ---
 
@@ -22,8 +22,8 @@ While PyTorch's native `FullyShardedDataParallel` (FSDP) is optimized for high-t
   * **`ForwardPostHook`:** Immediately frees full-sized parameters post-execution to enforce memory bounds.
   * **`DTensorBackwardHook`:** Intercepts unreduced full gradients during autograd and triggers collective reduce-scatter ops back to local parameter shards.
 * **Flexible State Dict Management:**
-  * **`FULL` Mode:** All-gathers un-sharded weights into standard PyTorch module formats (compatible with single-device inference).
-  * **`LOCAL` Mode:** Zero-communication per-rank checkpointing for fast local saves/resumptions.
+  * **`Full` Mode:** All-gathers un-sharded weights into standard PyTorch module formats (compatible with single-device inference).
+  * **`Local` Mode:** Zero-communication per-rank checkpointing for fast local saves/resumptions.
 * **Mathematically Verified:** Includes a verification suite validating loss convergence, parameter updates, and checkpoint compatibility directly against PyTorch's native FSDP engine.
 
 ---
@@ -66,7 +66,7 @@ While PyTorch's native `FullyShardedDataParallel` (FSDP) is optimized for high-t
 
 ## 🧪 Verification & Parity Testing
 
-`gloofsdp` includes a dual-rank verification suite (`test_verification.py` and `test_checkpoint_verification.py`) that executes via `torchrun`:
+`edufsdp` includes a dual-rank verification suite (`test_verification.py` and `test_checkpoint_verification.py`) that executes via `torchrun`:
 
 ```bash
 # Run convergence verification against PyTorch Native FSDP
@@ -85,7 +85,7 @@ torchrun --nproc_per_node=2 tests/test_checkpoint_verification.py
 import torch
 import torch.nn as nn
 import torch.distributed as dist
-from gloofsdp import EducationalFSDP
+from edufsdp import EducationalFSDP
 
 # 1. Initialize Gloo Process Group
 dist.init_process_group(backend="gloo")

@@ -1,5 +1,5 @@
 """
-Pytest setup and multi-process test runner configuration for gloofsdp.
+Pytest setup and multi-process test runner configuration for edufsdp.
 
 Provides custom test markers and Pytest execution hooks to run distributed
 unit tests across multiple CPU processes using `torch.multiprocessing.spawn`.

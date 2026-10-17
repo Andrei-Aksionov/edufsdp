@@ -1,5 +1,5 @@
 """
-Unit tests for gloofsdp.hooks covering autograd all-gather/reduce-scatter
+Unit tests for edufsdp.hooks covering autograd all-gather/reduce-scatter
 and execution hooks.
 """
 
@@ -8,14 +8,14 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from gloofsdp.hooks import (
+from edufsdp.hooks import (
     BackwardPostHook,
     BackwardPreHook,
     ForwardPostHook,
     ForwardPreHook,
     FSDPAllGatherFunction,
 )
-from gloofsdp.sharded_parameter import ShardedParameter
+from edufsdp.sharded_parameter import ShardedParameter
 from tests.base.test_class import DistributedTestBase
 
 

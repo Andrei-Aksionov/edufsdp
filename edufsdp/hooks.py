@@ -37,10 +37,10 @@ import torch.nn as nn
 from torch import Tensor
 from torch.distributed.tensor import DTensor, Partial, Replicate, Shard
 
-from gloofsdp.logging import logger
+from edufsdp.logging import logger
 
 if TYPE_CHECKING:
-    from gloofsdp.sharded_parameter import ShardedParameter
+    from edufsdp.sharded_parameter import ShardedParameter
 
 
 class FSDPAllGatherFunction(torch.autograd.Function):

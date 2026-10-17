@@ -12,7 +12,7 @@ import torch.distributed as dist
 from torch import nn
 from torch.distributed.tensor import DTensor
 
-from gloofsdp.fsdp import FSDP
+from edufsdp.fsdp import FSDP
 from tests.base.test_class import DistributedTestBase
 
 

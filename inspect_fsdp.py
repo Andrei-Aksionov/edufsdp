@@ -1,11 +1,11 @@
 """
-Execution script for `gloofsdp`.
+Execution script for `edufsdp`.
 
 Demonstrates:
 1. Rank-local input batch sharding for Data Parallelism.
 2. FSDP forward & backward execution with ASCII memory lifecycle logging.
 3. Global loss reduction across ranks.
-4. Exporting and reloading LOCAL vs. FULL state dict checkpoints.
+4. Exporting and reloading Local vs. Full state dict checkpoints.
 5. CLI options for controlling iteration counts and memory visualizations.
 """
 
@@ -21,10 +21,10 @@ import torch.nn as nn
 from torch import Tensor
 from torch.distributed.device_mesh import DeviceMesh, init_device_mesh
 
-from gloofsdp.fsdp import FSDP
-from gloofsdp.logging import logger
-from gloofsdp.model import MLP
-from gloofsdp.state_dict import StateDictType
+from edufsdp.fsdp import FSDP
+from edufsdp.logging import logger
+from edufsdp.model import MLP
+from edufsdp.state_dict import StateDictType
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -152,7 +152,7 @@ def run_train_step(
 
 def check_sd_loading(fsdp_model: FSDP, device_mesh: DeviceMesh) -> None:
     """
-    Validates state dict extraction and restoration across LOCAL and FULL formats.
+    Validates state dict extraction and restoration across Local and Full formats.
 
     Args:
         fsdp_model: Trained FSDP model instance.

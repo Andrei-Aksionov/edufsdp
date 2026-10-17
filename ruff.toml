@@ -60,7 +60,7 @@ line-length = 95
  "unsorted-imports",  # I001
  "unused-import",  # F401
 ]
-"gloofsdp/logging.py" = [
+"edufsdp/logging.py" = [
  "print",  # T201: `print` found
 ]
 "*.ipynb" = [

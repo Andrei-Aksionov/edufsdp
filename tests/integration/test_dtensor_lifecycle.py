@@ -9,7 +9,7 @@ import pytest
 import torch
 from torch.distributed.tensor import DTensor, Shard
 
-from gloofsdp.fsdp import FSDP
+from edufsdp.fsdp import FSDP
 from tests.base.test_class import DistributedTestBase
 
 

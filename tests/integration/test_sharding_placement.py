@@ -8,7 +8,7 @@ import copy
 import pytest
 import torch
 
-from gloofsdp.fsdp import FSDP
+from edufsdp.fsdp import FSDP
 from tests.base.test_class import DistributedTestBase
 
 

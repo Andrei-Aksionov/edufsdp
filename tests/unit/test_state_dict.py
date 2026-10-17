@@ -1,5 +1,5 @@
 """
-Unit tests for gloofsdp.state_dict covering LOCAL and FULL state dict extraction,
+Unit tests for edufsdp.state_dict covering Local and Full state dict extraction,
 loading, and parameter state preservation.
 """
 
@@ -9,8 +9,8 @@ import pytest
 import torch
 from torch.distributed.tensor import DTensor
 
-from gloofsdp.fsdp import FSDP
-from gloofsdp.state_dict import StateDictManager, StateDictType
+from edufsdp.fsdp import FSDP
+from edufsdp.state_dict import StateDictManager, StateDictType
 from tests.base.test_class import DistributedTestBase
 
 
@@ -23,14 +23,14 @@ class TestStateDictManager(DistributedTestBase):
 
     def test_get_state_dict_local_format(self) -> None:
         """
-        Verifies extraction of LOCAL state dict returns rank-local shard shapes
+        Verifies extraction of Local state dict returns rank-local shard shapes
         and values.
         """
         fsdp_model = FSDP(self.base_model, self.device_mesh)
         state_dict = StateDictManager.get_state_dict(
             fsdp_model.inner_module,
             fsdp_model.sharded_parameters,
-            StateDictType.LOCAL,
+            StateDictType.Local,
         )
 
         assert set(state_dict.keys()) == {"fc1.weight", "fc2.weight"}
@@ -46,14 +46,14 @@ class TestStateDictManager(DistributedTestBase):
 
     def test_get_state_dict_full_format_matches_baseline(self) -> None:
         """
-        Verifies extraction of FULL state dict consolidates global tensors
+        Verifies extraction of Full state dict consolidates global tensors
         matching the unsharded baseline.
         """
         fsdp_model = FSDP(copy.deepcopy(self.base_model), self.device_mesh)
         full_state_dict = StateDictManager.get_state_dict(
             fsdp_model.inner_module,
             fsdp_model.sharded_parameters,
-            StateDictType.FULL,
+            StateDictType.Full,
         )
 
         assert set(full_state_dict.keys()) == {"fc1.weight", "fc2.weight"}
@@ -68,7 +68,7 @@ class TestStateDictManager(DistributedTestBase):
 
     def test_get_state_dict_full_preserves_sharded_parameter_state(self) -> None:
         """
-        Verifies that extracting a FULL state dict gathers tensors during extraction
+        Verifies that extracting a Full state dict gathers tensors during extraction
         but leaves parameters sharded.
         """
         fsdp_model = FSDP(self.base_model, self.device_mesh)
@@ -77,11 +77,11 @@ class TestStateDictManager(DistributedTestBase):
         for sharded_parameter in fsdp_model.sharded_parameters.values():
             assert not sharded_parameter.is_gathered
 
-        # Extract FULL state dict
+        # Extract Full state dict
         full_state_dict = StateDictManager.get_state_dict(
             fsdp_model.inner_module,
             fsdp_model.sharded_parameters,
-            StateDictType.FULL,
+            StateDictType.Full,
         )
 
         # Assert returned state dict contains full tensors
@@ -97,12 +97,12 @@ class TestStateDictManager(DistributedTestBase):
             assert sharded_parameter.shape == expected_local_shape
 
     def test_load_state_dict_local_format(self) -> None:
-        """Verifies reloading LOCAL format state dict updates rank-local shards correctly."""
+        """Verifies reloading Local format state dict updates rank-local shards correctly."""
         fsdp_model_src = FSDP(copy.deepcopy(self.base_model), self.device_mesh)
         local_state_dict = StateDictManager.get_state_dict(
             fsdp_model_src.inner_module,
             fsdp_model_src.sharded_parameters,
-            StateDictType.LOCAL,
+            StateDictType.Local,
         )
 
         # Modify source weights slightly
@@ -115,28 +115,28 @@ class TestStateDictManager(DistributedTestBase):
             fsdp_model_target.inner_module,
             fsdp_model_target.sharded_parameters,
             local_state_dict,
-            StateDictType.LOCAL,
+            StateDictType.Local,
         )
 
         # Verify target shards reflect updated values
         target_local_state_dict = StateDictManager.get_state_dict(
             fsdp_model_target.inner_module,
             fsdp_model_target.sharded_parameters,
-            StateDictType.LOCAL,
+            StateDictType.Local,
         )
         for fqn in local_state_dict:
             torch.testing.assert_close(target_local_state_dict[fqn], local_state_dict[fqn])
 
     def test_load_state_dict_full_format(self) -> None:
         """
-        Verifies reloading FULL format state dict
+        Verifies reloading Full format state dict
         correctly redistributes global tensors across ranks.
         """
         fsdp_model_src = FSDP(copy.deepcopy(self.base_model), self.device_mesh)
         full_state_dict = StateDictManager.get_state_dict(
             fsdp_model_src.inner_module,
             fsdp_model_src.sharded_parameters,
-            StateDictType.FULL,
+            StateDictType.Full,
         )
 
         fsdp_model_target = FSDP(copy.deepcopy(self.base_model), self.device_mesh)
@@ -144,14 +144,14 @@ class TestStateDictManager(DistributedTestBase):
             fsdp_model_target.inner_module,
             fsdp_model_target.sharded_parameters,
             full_state_dict,
-            StateDictType.FULL,
+            StateDictType.Full,
         )
 
         # Verify target extracted full state dict matches source full state dict
         target_full_state_dict = StateDictManager.get_state_dict(
             fsdp_model_target.inner_module,
             fsdp_model_target.sharded_parameters,
-            StateDictType.FULL,
+            StateDictType.Full,
         )
         for fqn in full_state_dict:
             torch.testing.assert_close(target_full_state_dict[fqn], full_state_dict[fqn])
@@ -169,5 +169,5 @@ class TestStateDictManager(DistributedTestBase):
                 fsdp_model.inner_module,
                 fsdp_model.sharded_parameters,
                 invalid_state_dict,
-                StateDictType.LOCAL,
+                StateDictType.Local,
             )

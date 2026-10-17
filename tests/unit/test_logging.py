@@ -1,5 +1,5 @@
 """
-Unit tests for gloofsdp.logging covering ASCIIVisualizer layout rendering and RankLogger
+Unit tests for edufsdp.logging covering ASCIIVisualizer layout rendering and RankLogger
 output.
 """
 
@@ -12,7 +12,7 @@ import pytest
 import torch
 from torch import distributed as dist
 
-from gloofsdp.logging import ASCIIVisualizer, RankLogger
+from edufsdp.logging import ASCIIVisualizer, RankLogger
 from tests.base.test_class import DistributedTestBase
 
 
@@ -132,7 +132,7 @@ class TestRankLoggerDistributed(DistributedTestBase):
         """
         test_logger = RankLogger()
 
-        log_file_path = os.path.join(tempfile.gettempdir(), "gloofsdp_log_ordered_test.txt")
+        log_file_path = os.path.join(tempfile.gettempdir(), "edufsdp_log_ordered_test.txt")
         if self.rank == 0:
             open(log_file_path, "w").close()
 

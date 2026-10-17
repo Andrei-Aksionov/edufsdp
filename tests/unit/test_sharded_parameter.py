@@ -1,5 +1,5 @@
 """
-Unit tests for gloofsdp.sharded_parameter covering
+Unit tests for edufsdp.sharded_parameter covering
 DTensor sharding and state transitions.
 """
 
@@ -9,7 +9,7 @@ import torch.nn as nn
 from torch import Tensor
 from torch.distributed.tensor import DTensor
 
-from gloofsdp.sharded_parameter import ShardedParameter
+from edufsdp.sharded_parameter import ShardedParameter
 from tests.base.test_class import DistributedTestBase
 
 

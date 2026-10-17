@@ -1,5 +1,5 @@
 """
-Unit tests for gloofsdp.fsdp covering module wrapping, parameter traversal, hooks, and state
+Unit tests for edufsdp.fsdp covering module wrapping, parameter traversal, hooks, and state
 dict delegation.
 """
 
@@ -8,10 +8,10 @@ from unittest.mock import patch
 import pytest
 import torch
 
-from gloofsdp.fsdp import FSDP
-from gloofsdp.hooks import BackwardPostHook, BackwardPreHook, ForwardPostHook, ForwardPreHook
-from gloofsdp.sharded_parameter import ShardedParameter
-from gloofsdp.state_dict import StateDictType
+from edufsdp.fsdp import FSDP
+from edufsdp.hooks import BackwardPostHook, BackwardPreHook, ForwardPostHook, ForwardPreHook
+from edufsdp.sharded_parameter import ShardedParameter
+from edufsdp.state_dict import StateDictType
 from tests.base.test_class import DistributedTestBase
 
 
@@ -78,7 +78,7 @@ class TestFSDP(DistributedTestBase):
             f"{sharded_parameter_names}"
         )
 
-    @patch("gloofsdp.fsdp.StateDictManager.get_state_dict")
+    @patch("edufsdp.fsdp.StateDictManager.get_state_dict")
     def test_state_dict_delegation_passes_all_sharded_parameters(
         self, mock_get_state_dict
     ) -> None:
@@ -89,17 +89,17 @@ class TestFSDP(DistributedTestBase):
         fsdp_model = FSDP(self.base_model, self.device_mesh)
         mock_get_state_dict.return_value = {"mock": "state_dict"}
 
-        result = fsdp_model.state_dict(StateDictType.LOCAL)
+        result = fsdp_model.state_dict(StateDictType.Local)
 
         mock_get_state_dict.assert_called_once()
         _, passed_sharded_parameters, passed_type = mock_get_state_dict.call_args[0]
 
         # Verify no sharded parameters were skipped or omitted
         assert set(passed_sharded_parameters.keys()) == {"fc1.weight", "fc2.weight"}
-        assert passed_type == StateDictType.LOCAL
+        assert passed_type == StateDictType.Local
         assert result == {"mock": "state_dict"}
 
-    @patch("gloofsdp.fsdp.StateDictManager.load_state_dict")
+    @patch("edufsdp.fsdp.StateDictManager.load_state_dict")
     def test_load_state_dict_delegation_passes_all_sharded_parameters(
         self, mock_load_state_dict
     ) -> None:
@@ -110,7 +110,7 @@ class TestFSDP(DistributedTestBase):
         fsdp_model = FSDP(self.base_model, self.device_mesh)
         dummy_state_dict = {"fc1.weight": torch.zeros(2, 16)}
 
-        fsdp_model.load_state_dict(dummy_state_dict, state_dict_type=StateDictType.LOCAL)
+        fsdp_model.load_state_dict(dummy_state_dict, state_dict_type=StateDictType.Local)
 
         mock_load_state_dict.assert_called_once()
         _, passed_sharded_parameters, passed_dict, passed_type = (
@@ -119,7 +119,7 @@ class TestFSDP(DistributedTestBase):
 
         assert set(passed_sharded_parameters.keys()) == {"fc1.weight", "fc2.weight"}
         assert passed_dict == dummy_state_dict
-        assert passed_type == StateDictType.LOCAL
+        assert passed_type == StateDictType.Local
 
     def test_fsdp_forward_and_backward_execution(self) -> None:
         """

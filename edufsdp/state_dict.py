@@ -2,8 +2,8 @@
 State dictionary management for Educational FSDP.
 
 Handles extracting and loading model state dictionaries in two formats:
-1. `LOCAL`: Saves/loads rank-local 1/N parameter tensor shards.
-2. `FULL`: Saves/loads consolidated global parameters (unsharded).
+1. `Local`: Saves/loads rank-local 1/N parameter tensor shards.
+2. `Full`: Saves/loads consolidated global parameters (unsharded).
 """
 
 from enum import Enum
@@ -14,19 +14,19 @@ import torch.nn as nn
 from torch import Tensor
 from torch.distributed.tensor import DTensor, Shard, distribute_tensor
 
-from gloofsdp.hooks import FSDPAllGatherFunction
+from edufsdp.hooks import FSDPAllGatherFunction
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from gloofsdp.sharded_parameter import ShardedParameter
+    from edufsdp.sharded_parameter import ShardedParameter
 
 
 class StateDictType(Enum):
     """Supported state dict format types."""
 
-    FULL = "full"  # Consolidated global parameters across ranks
-    LOCAL = "local"  # Rank-local sharded parameter tensors
+    Full = "full"  # Consolidated global parameters across ranks
+    Local = "local"  # Rank-local sharded parameter tensors
 
 
 class StateDictManager:
@@ -37,15 +37,15 @@ class StateDictManager:
     def get_state_dict(
         module: nn.Module,
         sharded_parameters: dict[str, ShardedParameter],
-        state_dict_type: StateDictType = StateDictType.LOCAL,
+        state_dict_type: StateDictType = StateDictType.Local,
     ) -> dict[str, Tensor]:
         """
-        Extracts module state dictionary in either `LOCAL` or `FULL` format.
+        Extracts module state dictionary in either `Local` or `Full` format.
 
         Args:
             module: Target `nn.Module` wrapped by FSDP.
             sharded_parameters: Dictionary with sharded parameters of the target module.
-            state_dict_type: Target format (`StateDictType.LOCAL` or `StateDictType.FULL`).
+            state_dict_type: Target format (`StateDictType.Local` or `StateDictType.Full`).
 
         Returns:
             Map of parameter FQNs to local shards or full tensors.
@@ -59,7 +59,7 @@ class StateDictManager:
             else:
                 parameter = sharded_parameters[parameter_name]
 
-                if state_dict_type == StateDictType.LOCAL:
+                if state_dict_type == StateDictType.Local:
                     tensor = parameter.dtensor
                 else:
                     gathered = parameter._gathered_tensor
@@ -80,7 +80,7 @@ class StateDictManager:
         module: nn.Module,
         sharded_parameters: dict[str, ShardedParameter],
         state_dict: Mapping[str, Tensor | DTensor],
-        state_dict_type: StateDictType = StateDictType.LOCAL,
+        state_dict_type: StateDictType = StateDictType.Local,
     ) -> None:
         """
         Loads a state dictionary checkpoint into sharded model parameters.
@@ -89,7 +89,7 @@ class StateDictManager:
             module: Target `nn.Module` wrapped by FSDP.
             sharded_parameters: Dictionary with sharded parameters of the target module.
             state_dict: Incoming map of parameter FQNs to tensors.
-            state_dict_type: Format of incoming state_dict (`LOCAL` or `FULL`).
+            state_dict_type: Format of incoming state_dict (`Local` or `Full`).
 
         Raises:
             KeyError: If a parameter in `state_dict` does not exist in `module`.
@@ -111,14 +111,14 @@ class StateDictManager:
 
             parameter = sharded_parameters[sd_name]
 
-            if state_dict_type == StateDictType.LOCAL:
+            if state_dict_type == StateDictType.Local:
                 # Handle incoming state dict tensor whether it is a DTensor or raw local Tensor
                 local_sd_tensor = (
                     sd_tensor.to_local() if isinstance(sd_tensor, DTensor) else sd_tensor
                 )
                 parameter.local_shard.copy_(local_sd_tensor.to(parameter.local_shard.device))
 
-            elif state_dict_type == StateDictType.FULL:
+            elif state_dict_type == StateDictType.Full:
                 # Distribute global tensor across mesh to extract current rank's shard
                 sharded_dtensor = distribute_tensor(
                     sd_tensor.to(parameter.local_shard.device),

@@ -43,14 +43,14 @@ from typing import TYPE_CHECKING, Any
 import torch.nn as nn
 from torch import Tensor
 
-from gloofsdp.hooks import (
+from edufsdp.hooks import (
     BackwardPostHook,
     BackwardPreHook,
     ForwardPostHook,
     ForwardPreHook,
 )
-from gloofsdp.sharded_parameter import ShardedParameter
-from gloofsdp.state_dict import StateDictManager, StateDictType
+from edufsdp.sharded_parameter import ShardedParameter
+from edufsdp.state_dict import StateDictManager, StateDictType
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -145,15 +145,15 @@ class FSDP[ModuleT: nn.Module](nn.Module):
     def state_dict(
         self,
         *args: Any,
-        state_dict_type: StateDictType = StateDictType.LOCAL,
+        state_dict_type: StateDictType = StateDictType.Local,
         **kwargs: Any,
     ) -> dict[str, Tensor]:
         """
-        Exports module state dict in either `LOCAL` (sharded) or `FULL` (unsharded) format.
+        Exports module state dict in either `Local` (sharded) or `Full` (unsharded) format.
 
         Args:
             *args: Positional arguments matching `nn.Module.state_dict`.
-            state_dict_type: Target format (`StateDictType.LOCAL` or `StateDictType.FULL`).
+            state_dict_type: Target format (`StateDictType.Local` or `StateDictType.Full`).
             **kwargs: Keyword arguments matching `nn.Module.state_dict` (prefix, keep_vars).
 
         Returns:
@@ -169,7 +169,7 @@ class FSDP[ModuleT: nn.Module](nn.Module):
         state_dict: Mapping[str, Tensor],
         strict: bool = True,
         assign: bool = False,
-        state_dict_type: StateDictType = StateDictType.LOCAL,
+        state_dict_type: StateDictType = StateDictType.Local,
     ) -> None:
         """
         Loads state dictionary checkpoint into sharded parameters.
@@ -178,7 +178,7 @@ class FSDP[ModuleT: nn.Module](nn.Module):
             state_dict: Checkpoint mapping parameter names to tensors.
             strict: Whether to strictly enforce key matching in state_dict.
             assign: Whether to assign tensors directly rather than copying in-place.
-            state_dict_type: Format of incoming state_dict (`LOCAL` or `FULL`).
+            state_dict_type: Format of incoming state_dict (`Local` or `Full`).
 
         """
         return StateDictManager.load_state_dict(
