@@ -11,7 +11,6 @@ authors = [
     { name = "Andrei Aksionau" },
 ]
 dependencies = [
-    "numpy>=2.5.1,<2.6.0",
     "torch>=2.14.0,<2.15.0",
 ]
 
@@ -30,7 +29,7 @@ markers = ["""
 multi_rank(world_size=2): run a test across multiple CPU processes \
 via torch.multiprocessing.spawn",
 """]
-filterwarnings = ["ignore::FutureWarning"]
+filterwarnings = ["ignore::FutureWarning", "ignore:Failed to initialize NumPy"]
 
 [tool.ty]
 # Silences type errors when overriding base class mutable Callable attributes
