@@ -1,118 +1,78 @@
-# edufsdp (`edufsdp`)
 
-> **A transparent, ground-up implementation of Fully Sharded Data Parallel (FSDP) engineered for educational clarity, low-level inspection, and execution on Apple Silicon / CPU via the Gloo backend.**
+<p>
+    <h4 align="center"><i>Welcome to</i></h4>
+    <h1 align="center">Educational Fully Sharded Data Parallel</h2>
+    <h4 align="center">(edufsdp)</h4>
+</p>
 
----
+<br>
 
-## 💡 Overview
+<p align="center"><i>A transparent, ground-up implementation of Fully Sharded Data Parallel (FSDP) built for learning, low-level inspection, and running on CPU via the Gloo backend.</i></p>
 
-While PyTorch's native `FullyShardedDataParallel` (FSDP) is optimized for high-throughput GPU training with complex C++/NCCL pipelines, its internal abstractions can be difficult to inspect and step through.
+<br>
 
-`edufsdp` is an educational reference implementation designed to make distributed parameter sharding, autograd hook interception, and collective communications completely explicit and transparent. Built to run natively on CPU and Apple Silicon via PyTorch’s `Gloo` backend, `edufsdp` mirrors the mathematical lifecycle of production FSDP down to $\le 10^{-5}$ precision.
+## Overview
 
----
+While PyTorch's native FullyShardedDataParallel (FSDP) is powerful and production-ready, its codebase is designed for massive scale, making it hard to peel back the layers and understand how things work step by step.
 
-## ✨ Key Features & Architecture
+***edufsdp*** is an educational reference implementation that makes parameter sharding, autograd hooks, and collective communication completely transparent. Built to run on CPUs using PyTorch's Gloo backend, it matches the mathematical behavior of production FSDP down to $\le 10^{-5}$ precision, without the heavy infrastructure overhead.
 
-* **Dual Parameter Sharding Engine:**
-  * **Manual Engine (`ShardedParameter`):** Explicit flat-buffer slicing, manual padding math, and low-level `dist.reduce_scatter` / `dist.all_gather` calls.
-  * **Native `DTensor` Engine (`DTensorShardedParameter`):** Modern PyTorch 2.x placement-driven sharding leveraging `DeviceMesh`, `Shard(0)`, `Replicate()`, and `Partial()` abstractions.
-* **Explicit Forward & Backward Hooks:**
-  * **`ForwardPreHook`:** Dynamically reconstructs parameters prior to layer execution.
-  * **`ForwardPostHook`:** Immediately frees full-sized parameters post-execution to enforce memory bounds.
-  * **`DTensorBackwardHook`:** Intercepts unreduced full gradients during autograd and triggers collective reduce-scatter ops back to local parameter shards.
-* **Flexible State Dict Management:**
-  * **`Full` Mode:** All-gathers un-sharded weights into standard PyTorch module formats (compatible with single-device inference).
-  * **`Local` Mode:** Zero-communication per-rank checkpointing for fast local saves/resumptions.
-* **Mathematically Verified:** Includes a verification suite validating loss convergence, parameter updates, and checkpoint compatibility directly against PyTorch's native FSDP engine.
+<br>
 
----
+## Key Features
 
-## 🛠 Execution Lifecycle
+**Explicit Parameter Container**
+<br>
+Wraps DTensor instances and seamlessly switch module state between local shards and gathered weights, while custom autograd functions handle exact All-Gather and Reduce-Scatter operations.
 
-```text
+**Clear Forward & Backward Lifecycle Hooks**
+<br>
+• *Symmetric Autograd Integration* — Wraps collective communication in a custom torch.autograd.Function, using DTensor primitives to execute All-Gather (forward) and Reduce-Scatter (backward) within the computational graph.
+<br>
+• *Forward Pre/Post Hooks* — Reconstructs full weights right before layer execution and discards them immediately afterward to minimize the memory footprint.
+<br>
+• *Backward Pre/Post Hooks* — Re-gathers full weights right before gradient computation and discards them immediately afterward, keeping only sharded gradients.
 
-   ┌────────────────────────────────────────────────────────┐
-   │                   Parameter Sharding                   │
-   │    Split global parameters into local rank shards      │
-   └───────────────────────────┬────────────────────────────┘
-                               │
-                               ▼
+**Flexible State Dict Management**
+<br>
+• *Local Mode* — Operates on rank-specific DTensor shards directly, bypassing network communication for maximum speed.
+<br>
+• *Full Mode* — Reconstructs unified global tensors across all ranks, ensuring full compatibility for single-device export.
 
-┌───────────────────────────────────────────────────────────────────────────────┐
-│ Forward Pass (Per Submodule)                                                  │
-│  1. ForwardPreHook  ──> Gather un-sharded weight W (Replicate)                │
-│  2. Compute Output  ──> Run activation forward pass                           │
-│  3. ForwardPostHook ──> Free full weight W, retain local shard W_local        │
-└──────────────────────────────────┬────────────────────────────────────────────┘
-│
-▼
-┌───────────────────────────────────────────────────────────────────────────────┐
-│ Backward Pass (Autograd)                                                      │
-│  1. Compute Grad   ──> Un-sharded gradient G_full computed (Partial)          │
-│  2. BackwardHook   ──> Reduce-scatter G_full across mesh -> G_shard           │
-│  3. Gradient Step  ──> Attach G_shard to local_parameter.grad                     │
-└──────────────────────────────────┬────────────────────────────────────────────┘
-│
-▼
-┌────────────────────────────────────────────────────────┐
-│                    Optimizer Step                      │
-│    Optimizer updates persistent local_parameter shards     │
-└────────────────────────────────────────────────────────┘
+**Mathematically Verified**
+<br>
+Backed by an automated verification suite that validates sharding placements of weights and optimizer states, match of gradient reduction, parameter updates, loss convergence and state dict restoration against PyTorch's native distributed primitives.
 
-```
+<br>
 
----
+## Quickstart
 
-## 🧪 Verification & Parity Testing
-
-`edufsdp` includes a dual-rank verification suite (`test_verification.py` and `test_checkpoint_verification.py`) that executes via `torchrun`:
+1\. **Clone and Sync Dependencies**
+<br>
+Use [uv](https://docs.astral.sh/uv/getting-started/installation/) to automatically manage the Python environment and sync dependencies specified in *pyproject.toml*:
 
 ```bash
-# Run convergence verification against PyTorch Native FSDP
-torchrun --nproc_per_node=2 tests/test_verification.py
-
-# Run checkpoint & state_dict compatibility tests
-torchrun --nproc_per_node=2 tests/test_checkpoint_verification.py
-
+git clone https://github.com/Andrei-Aksionov/edufsdp.git
+cd edufsdp
+uv sync
 ```
 
----
+<br>
 
-## 🚀 Quickstart
+2\. **Run the Demonstration Script**
+<br>
+Execute the root-level inspection script to watch live weight sharding visualizations, hook executions, and state saving in action:
 
-```python
-import torch
-import torch.nn as nn
-import torch.distributed as dist
-from edufsdp import EducationalFSDP
-
-# 1. Initialize Gloo Process Group
-dist.init_process_group(backend="gloo")
-
-# 2. Define Model & Synchronize Initial Weights
-raw_model = nn.Sequential(
-    nn.Linear(64, 128),
-    nn.ReLU(),
-    nn.Linear(128, 10)
-)
-for p in raw_model.parameters():
-    dist.broadcast(p.data, src=0)
-
-# 3. Wrap Model with EducationalFSDP
-model = EducationalFSDP(raw_model)
-optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-
-# 4. Standard Training Loop
-optimizer.zero_grad()
-output = model(torch.randn(8, 64))
-loss = output.sum()
-loss.backward()
-optimizer.step()
-
+```bash
+./run_inspect_fsdp.sh
 ```
 
-<ElicitationsGroup message="Would you like to add any extra sections to this README?">
-  <Elicitation label="Add a 'Learnings & Pitfalls' section" query="Add a 'Key Technical Learnings & Pitfalls' section to the README summarizing autograd hooks, DTensor placements, and optimizer binding bugs."/>
-  <Elicitation label="Add Installation and Project Structure sections" query="Add a project directory structure tree and step-by-step installation setup guide to the README."/>
-</ElicitationsGroup>
+<br>
+
+## Documentation
+
+⇨ **[Conceptual FSDP & Lifecycle](docs/01_fsdp_mechanics.md)** — Deep dive into the memory wall, parameter sharding lifecycles, and FSDP1 vs. FSDP2 mechanics.
+
+⇨ **[Codebase Architecture](docs/02_codebase_architecture.md)** — Mapping theory to code (parameter container, custom autograd hooks, module wrapping, and state dict managers).
+
+⇨ **[Setup & Debugging Guide](docs/03_installation_and_debugging.md)** — Guide on environment setup, wrapping arbitrary modules, multi-rank debugging, and deadlock troubleshooting.
