@@ -13,20 +13,45 @@ Provides:
                                    HOOK EXECUTION SEQUENCE
 =============================================================================================
 
-FORWARD PASS:
-┌───────────────────────────┐   ┌───────────────────────────┐   ┌───────────────────────────┐
-│ ForwardPreHook            │   │ Module Compute            │   │ ForwardPostHook           │
-│  --> all_gather()         │-> │  Executes layer ops       │-> │  --> free()               │
-│  1/N Shards -> Full W & B │   │  using full parameters    │   │  Full W & B -> 1/N Shards │
-└───────────────────────────┘   └───────────────────────────┘   └───────────────────────────┘
+ FORWARD PASS:
+ ┌───────────────────────────────┐         ┌───────────────────────────┐
+ │ ForwardPreHook                │  ---->  │ FSDPAllGatherFunction     │ ──────┐
+ │  • Intercepts forward         │         │  • Executes All-Gather    │       │
+ │  • Triggers gathering         │         │    across all ranks       │       │
+ │    via FSDPAllGatherFunction  │         │                           │       │
+ └───────────────────────────────┘         └───────────────────────────┘       │
+                                                                               │
+                                                                               │
+ ┌───────────────────────────────┐         ┌───────────────────────────┐       │
+ │ ForwardPostHook               │  <----  │ Module Forward Compute    │ <─────┘
+ │  • Frees gathered             │         │  • Executes layer ops     │
+ │    weights                    │         │    using full parameters  │
+ └───────────────────────────────┘         └───────────────────────────┘
 
-BACKWARD PASS:
-┌───────────────────────────┐   ┌───────────────────────────┐   ┌───────────────────────────┐
-│ BackwardPreHook           │   │ Backward Compute          │   │ BackwardPostHook          │
-│  --> all_gather()         │-> │  Calculates dW, dB        │-> │  --> free()               │
-│  1/N Shards -> Full W & B │   │  & reduce_scatter()       │   │  Full W & B -> 1/N Shards │
-└───────────────────────────┘   │  dW, dB -> 1/N Shards     │   └───────────────────────────┘
-                                └───────────────────────────┘
+ -------------------------------------------------------------------------------
+
+ BACKWARD PASS:
+ ┌───────────────────────────────┐         ┌───────────────────────────┐
+ │ BackwardPreHook               │  ---->  │ FSDPAllGatherFunction     │ ──────┐
+ │  • Intercepts backward        │         │  • Re-executes All-Gather │       │
+ │  • Triggers gathering         │         │    for gradient calc      │       │
+ │    via FSDPAllGatherFunction  │         │                           │       │
+ └───────────────────────────────┘         └───────────────────────────┘       │
+                                                                               │
+                                                                               │
+ ┌───────────────────────────────┐         ┌───────────────────────────┐       │
+ │ FSDPAllGatherFunction         │  <----  │ Module Backward Compute   │ <─────┘
+ │  • Autograd triggers          │         │  • Computes gradients     │
+ │    .backward()                │         │    w.r.t. parameters      │
+ │  • Executes Reduce-Scatter    │         │                           │
+ └─────────────┬─────────────────┘         └───────────────────────────┘
+               |
+               v
+ ┌───────────────────────────────┐
+ │ BackwardPostHook              │
+ │  • Frees gathered             │
+ │    weights                    │
+ └───────────────────────────────┘
 
 """
 

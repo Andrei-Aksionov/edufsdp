@@ -5,12 +5,6 @@ This simple Multi-Layer Perceptron (MLP) acts as a clean baseline to observe:
   1. Module tree traversal and parameter sharding (`layer1.weight`, `layer2.weight`, etc.)
   2. All-Gather collective calls before linear layers during forward/backward passes.
   3. Memory freeing (dropping full unsharded tensors) post-computation.
-
-Data Flow & Architecture:
-
-Input [Batch, 18] ──> [Linear: 18->24] ──> [ReLU] ──> [Linear: 24->12] ──> Output [Batch, 12]
-                            │                                  │
-                   (Sharded across ranks)             (Sharded across ranks)
 """
 
 import torch.distributed as dist
@@ -33,7 +27,7 @@ class MLP(nn.Module):
         super().__init__()
 
         world_size = dist.get_world_size()
-        self.input_dim: int = 3 * world_size
+        self.input_dim = 3 * world_size
         self.hidden_dim = 4 * world_size
         self.output_dim = 2 * world_size
 

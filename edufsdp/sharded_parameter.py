@@ -74,7 +74,7 @@ class ShardedParameter:
         #
         # Why torch.no_grad() is required here:
         # - Prevents PyTorch from recording `distribute_tensor` ops in the global
-        #   autograd graph during model initialization (which causes memory leaks).
+        #   autograd graph during model initialization.
         # - Ensures `sharded_dtensor` is created as a clean leaf node (grad_fn=None).
         # ---------------------------------------------------------------------
         with torch.no_grad():

@@ -111,7 +111,7 @@ class RankLogger:
         self.rank = int(os.environ.get("RANK", 0))
         self.world_size = int(os.environ.get("WORLD_SIZE", 1))
         self.last_layer_prefix: str | None = None
-        self.log_hooks: bool = False
+        self.log_hooks = False
 
         self.visualizer = ASCIIVisualizer(rank=self.rank, world_size=self.world_size)
 
