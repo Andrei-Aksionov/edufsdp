@@ -1,0 +1,68 @@
+<p><h1 align="center">Codebase Architecture & Component Internals</h1></p>
+
+<br>
+
+The `edufsdp` codebase is structured to maintain a direct, transparent correspondence between theoretical distributed principles and actual implementation details. Rather than relying on complex production wrappers or heavy C++ extensions, the architecture uses standard Python and PyTorch primitives to expose the mechanics of parameter sharding, lifecycle hooks, and state management.
+
+The core logic is partitioned into four primary modules:
+
+* **sharded_parameter.py** — Manages local weight slices, global shape abstractions, and state transitions.
+* **hooks.py** — Implements the custom autograd communication function and lifecycle hooks.
+* **fsdp.py** — Orchestrates recursive module wrapping and hook registration.
+* **state_dict.py** — Handles checkpoint conversion between local shards and full global tensors.
+
+<br>
+
+## 1. Explicit Parameter Management
+
+The foundational building block of the library is the ShardedParameter class (`sharded_parameter.py`). In a sharded environment, each rank only owns a fraction of any given parameter tensor.
+
+* **Local vs. Global Representation:** ShardedParameter wraps the local weight slice residing on the current rank while keeping track of the tensor's global shape and sharding dimension via PyTorch's native DTensor abstractions.
+* **State Manipulation Methods:** ShardedParameter exposes two key state manipulation methods that control whether a module sees its local shard or the fully gathered weight:
+  * *set_unsharded(full_tensor)*: Mounts the gathered full parameter tensor directly onto the module's attribute dictionary (module.\_\_dict\_\_), allowing normal forward/backward matrix multiplication.
+  * *set_sharded()*: Restores the attribute pointer back to the sharded DTensor and clears the cached full tensor reference (_gathered_tensor = None), freeing memory immediately.
+
+<br>
+
+## 2. Custom Autograd & Lifecycle Hooks
+
+Distributed training requires precise synchronization timed directly to the execution of the forward and backward passes. The `hooks.py` module manages this timing through a native autograd integration and discrete hook classes.
+
+### Custom Autograd Function
+
+`FSDPAllGatherFunction` inherits from `torch.autograd.Function`, integrating distributed communication natively into PyTorch's autograd graph:
+
+* **Forward Pass:** Takes the local shard, reconstructs a sharded DTensor, and redistributes it to 'Replicate()' placement across all ranks via the Gloo backend. This yields the full un-sharded tensor across all ranks.
+* **Backward Pass:** Intercepts incoming gradients, wraps them in a Partial DTensor, and redistributes them via 'redistribute(\[Shard(dim=0)\])'. It then normalizes the sharded gradient by dividing by the world size ($N$), completing the Reduce-Scatter operation.
+
+### Lifecycle Hooks
+
+Four discrete hook classes manage parameter lifecycles by leveraging the parameter state methods:
+
+* **Forward Pre-Hook**: Intercepts module execution before the forward pass begins, triggering the All-Gather collective via 'FSDPAllGatherFunction.apply()' to temporarily reconstruct the full parameter tensor from local shards.
+* **Forward Post-Hook**: Executes immediately after the forward computation finishes, discarding the gathered full parameter tensor to reclaim peak device memory.
+* **Backward Pre-Hook**: Coordinates the secondary All-Gather required during the backward pass to restore parameter weights before gradient calculation.
+* **Backward Post-Hook**: Executes immediately after the backward pass computation finishes, specifically responsible for dropping and cleaning up the temporary all-gathered weights.
+
+<br>
+
+## 3. FSDP Orchestration Class
+
+The FSDP wrapper class (`fsdp.py`) acts as the primary user-facing interface for wrapping standard PyTorch models.
+
+* **Recursive Module Traversal:** When a model is passed to FSDP, the wrapper inspects its submodules and parameters recursively.
+* **Parameter Wrapping:** Standard 'torch.nn.Parameter' instances are converted into managed 'ShardedParameter' objects.
+* **Hook Registration:** It automatically binds the appropriate forward and backward hooks from `hooks.py` to each wrapped module, ensuring that communication collectives occur transparently during training execution.
+
+<br>
+
+## 4. State Dictionary Manager
+
+Saving and loading checkpoints in a distributed sharded environment requires handling two distinct operational modes, managed by StateDictManager (`state_dict.py`):
+
+* **Local Mode** (*StateDictType.Local*)
+  * Get State Dict: Extracts rank-specific DTensor shards directly from each process with zero inter-process communication.
+  * Load State Dict: Copies rank-local tensor payloads directly into 'parameter.local_shard'.
+* **Full Mode** (*StateDictType.Full*)
+  * Get State Dict: Automatically gathers full un-sharded parameter tensors across ranks using FSDPAllGatherFunction, returning a unified global state dictionary suitable for single-device inference or export.
+  * Load State Dict: Takes a global un-sharded checkpoint, distributes tensors across ranks using distribute_tensor with 'Shard(dim=0)', and loads local shards accordingly.

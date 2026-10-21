@@ -1,4 +1,6 @@
-# Conceptual FSDP & Lifecycle Mechanics
+<p><h1 align="center">Conceptual FSDP & Lifecycle Mechanics</h1></p>
+
+<br>
 
 This document provides a deep dive into the theoretical foundation and execution mechanics of Fully Sharded Data Parallelism (FSDP). It explains the memory bottlenecks of standard data parallelism, how FSDP breaks through these limits, the exact step-by-step forward and backward lifecycles, and how FSDP1 differs from modern FSDP2.
 
