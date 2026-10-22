@@ -1,18 +1,40 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-# --- Documentation ---
-# To disable boolean flags below, add a `no-` prefix (e.g., --no-show-memory-training)
+# ==============================================================================
+# FSDP Inspection Launcher
+#
+# Usage:
+#   ./run_inspect_fsdp.sh [--nprocs <num>]
+#
+# Notes:
+#   - To disable boolean flags below, add a `no-` prefix
+#     (e.g., --no-show-memory-training)
+# ==============================================================================
 
-# --- Environment Configurations ---
-# Silence the CPU thread pooling warning
+# --- 1. Defaults & Argument Parsing ---
+NPROCS=6
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --nprocs)
+            NPROCS="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown parameter: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# --- 2. Environment Configurations ---
 export OMP_NUM_THREADS=1
-
-# Silence the internal PyTorch C++ engine NumPy warning
 export PYTHONWARNINGS="ignore:Failed to initialize NumPy"
 
-# --- Execution ---
+# --- 3. Execution ---
 torchrun \
-  --nproc-per-node=6 \
+  --nproc-per-node="$NPROCS" \
   --master-addr=127.0.0.1 \
   --master-port=29500 \
   inspect_fsdp.py \
