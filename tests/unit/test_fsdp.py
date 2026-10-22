@@ -30,8 +30,7 @@ class TestFSDP(DistributedTestBase):
         fsdp_model = FSDP(self.base_model, self.device_mesh)
         sharded_map = fsdp_model.sharded_parameters
 
-        expected_fqns = {"fc1.weight", "fc2.weight"}
-        assert set(sharded_map.keys()) == expected_fqns
+        assert set(sharded_map.keys()) == {"fc1.weight", "fc2.weight"}
 
         for fqn, sharded_parameter in sharded_map.items():
             assert isinstance(sharded_parameter, ShardedParameter)
