@@ -1,0 +1,62 @@
+name: pre-commit
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pre-commit:
+    name: ${{ matrix.os }} (Py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ['3.14']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install Python dependencies via uv sync
+        run: uv sync
+
+      - name: Install Lychee (v0.24.1)
+        run: |
+          VERSION="v0.24.1"
+          echo "Installing Lychee version: $VERSION"
+
+          URL="https://github.com/lycheeverse/lychee/releases/download/lychee-${VERSION}/lychee-x86_64-unknown-linux-gnu.tar.gz"
+          FILENAME="lychee-${VERSION}.tar.gz"
+
+          # Load the archive, extract into temp folder, move the binary, delete the rest
+          mkdir -p lychee_install
+          curl -sL "$URL" -o "$FILENAME"
+          tar -xzf "$FILENAME" -C lychee_install --strip-components=1
+          sudo mv lychee_install/lychee /usr/local/bin/
+          rm -rf lychee_install "$FILENAME"
+
+          # Verify installation
+          echo "Installed Lychee version: $(lychee --version)"
+
+      # Cache lychee results (e.g. to avoid hitting rate limits)
+      - name: Restore lychee cache
+        uses: actions/cache@v5
+        with:
+          path: .lycheecache
+          key: cache-lychee-${{ github.sha }}
+          restore-keys: cache-lychee-
+
+      - name: Run pre-commit
+        run: uv run pre-commit run --all-files --show-diff-on-failure
+        env:
+          # to be used in case rate limits are surpassed
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
