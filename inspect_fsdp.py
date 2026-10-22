@@ -49,6 +49,9 @@ def init_distributed() -> None:
         os.environ["TP_SOCKET_IFNAME"] = "lo0"
     elif current_os == "Linux":  # Linux / Lightning AI Studio
         os.environ["GLOO_SOCKET_IFNAME"] = "lo"
+    else:
+        # On Windows, let Gloo auto-detect the interface
+        os.environ.pop("GLOO_SOCKET_IFNAME", None)
 
     dist.init_process_group(backend="gloo")
     # Distinct seed per rank for reproducible rank-local data generation

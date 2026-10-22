@@ -47,8 +47,14 @@ def _spawn_worker(
     os.environ["WORLD_SIZE"] = str(world_size)
     os.environ["LOCAL_RANK"] = str(rank)
 
-    # Explicit loopback interface binding for Gloo to prevent socket warnings
-    os.environ["GLOO_SOCKET_IFNAME"] = "lo0" if platform.system() == "Darwin" else "lo"
+    # Explicit loopback interface binding for Gloo to prevent socket warnings (Unix only)
+    if platform.system() == "Darwin":
+        os.environ["GLOO_SOCKET_IFNAME"] = "lo0"
+    elif platform.system() == "Linux":
+        os.environ["GLOO_SOCKET_IFNAME"] = "lo"
+    else:
+        # On Windows, let Gloo auto-detect the interface
+        os.environ.pop("GLOO_SOCKET_IFNAME", None)
 
     # Initialize PyTorch distributed process group
     dist.init_process_group(
