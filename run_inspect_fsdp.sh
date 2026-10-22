@@ -31,7 +31,6 @@ done
 # --- 2. Environment Configurations ---
 export OMP_NUM_THREADS=1
 export PYTHONWARNINGS="ignore:Failed to initialize NumPy"
-export USE_LIBUV=0  # Required for Windows torchrun compatibility
 
 # --- 3. Execution ---
 torchrun \
