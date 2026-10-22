@@ -18,6 +18,9 @@ export OMP_NUM_THREADS=1
 # Silence the internal PyTorch C++ engine NumPy warning
 export PYTHONWARNINGS="ignore:Failed to initialize NumPy"
 
+# Disable libuv for torchrun (required on Windows builds)
+export USE_LIBUV=0
+
 # --- Documentation ---
 # To disable boolean flags below, add a `no-` prefix (e.g., --no-show-memory-training)
 
