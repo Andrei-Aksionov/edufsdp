@@ -53,7 +53,8 @@ def init_distributed() -> None:
         # On Windows, let Gloo auto-detect the interface
         os.environ.pop("GLOO_SOCKET_IFNAME", None)
 
-    dist.init_process_group(backend="gloo")
+    if not dist.is_initialized():
+        dist.init_process_group(backend="gloo")
     # Distinct seed per rank for reproducible rank-local data generation
     torch.manual_seed(42 + dist.get_rank())
 
